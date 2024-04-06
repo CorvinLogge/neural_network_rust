@@ -250,7 +250,7 @@ impl Network {
     }
 
     // File format: first 4 bytes are number of rows, next 4 are number of columns every next 4 bytes are the values
-    pub fn save_to_path(&self, dir_path: &str)
+    pub fn save_to_path(&self, dir_path: &str) -> String
     {
         let id = &self.id;
         let folder_path_string = format!("{dir_path}/{id}");
@@ -285,8 +285,10 @@ impl Network {
         let mut lr_file = File::create(Path::new(lr_path_string.as_str())).unwrap();
 
         lr_file.write_f32::<BigEndian>(self.lr).unwrap();
+
+        self.id.clone()
     }
-    pub fn save_to_def_path(&self) {
+    pub fn save_to_def_path(&self) -> String {
         self.save_to_path("C:/Users/logge/RustroverProjects/neural_network/resources/models")
     }
 }

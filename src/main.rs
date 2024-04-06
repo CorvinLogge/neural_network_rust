@@ -2,7 +2,10 @@
 extern crate rocket;
 
 use conv::ConvUtil;
-use rocket::form::Form;
+use rocket::form::{Form, FromForm};
+use rocket::Response;
+use rocket::response::status;
+use rocket::response::status::Accepted;
 
 use crate::function::ActivationFunction::RELU;
 use crate::function::Function;
@@ -20,19 +23,23 @@ mod function;
 // }
 
 #[derive(FromForm)]
-struct TestForm {
+struct TrainReq {
+    iterations: usize,
+    lr: f32,
     layer_specs: Vec<usize>,
 }
 
-#[get("/train?<iterations>&<lr>&<layerspecs>")]
-fn train(iterations: usize, lr: f32, layerspecs: Form<TestForm>) {
+#[get("/train?<r>")]
+fn train(r: TrainReq) -> Accepted<String> {
     let mut training_data = emnist_parser::read_emnist("C:/Users/logge/RustroverProjects/neural_network/resources/emnist_digits/train/images", "C:/Users/logge/RustroverProjects/neural_network/resources/emnist_digits/train/labels");
 
-    let mut network = Network::new(layerspecs.layer_specs.as_slice(), lr, RELU);
+    let mut network = Network::new(r.layer_specs.as_slice(), r.lr, RELU);
 
-    network.train(&mut training_data, iterations);
+    network.train(&mut training_data, r.iterations);
 
-    network.save_to_def_path();
+    let id = network.save_to_def_path();
+
+    Accepted(format!("Successfully trained model: {id}"))
 }
 
 #[get("/profile?<network_id>&<tolerance>")]
