@@ -49,6 +49,16 @@ fn profile(network_id: &str, tolerance: f32) -> String {
     Network::from_file(format!("C:/Users/logge/RustroverProjects/neural_network/resources/models/{network_id}").as_str()).profile_str(tolerance)
 }
 
+#[get("/")]
+fn test() -> String {
+    "Connection worked".to_string()
+}
+
+#[launch]
+fn rocket() -> _ {
+    rocket::build().mount("/network", routes![train, profile]).attach(CORS)
+}
+
 pub struct CORS;
 
 #[rocket::async_trait]
@@ -66,11 +76,6 @@ impl Fairing for CORS {
         response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
         response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
     }
-}
-
-#[launch]
-fn rocket() -> _ {
-    rocket::build().mount("/network", routes![train, profile]).attach(CORS)
 }
 
 
