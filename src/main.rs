@@ -56,7 +56,7 @@ fn test() -> String {
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/network", routes![train, profile]).attach(CORS)
+    rocket::build().mount("/network", routes![train, profile, test]).attach(CORS)
 }
 
 pub struct CORS;
