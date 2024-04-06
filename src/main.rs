@@ -2,8 +2,10 @@
 extern crate rocket;
 
 use conv::ConvUtil;
+use rocket::{Request, Response};
+use rocket::fairing::{Fairing, Info, Kind};
 use rocket::form::{Form, FromForm};
-use rocket::Response;
+use rocket::http::Header;
 use rocket::response::status;
 use rocket::response::status::Accepted;
 
@@ -47,9 +49,28 @@ fn profile(network_id: &str, tolerance: f32) -> String {
     Network::from_file(format!("C:/Users/logge/RustroverProjects/neural_network/resources/models/{network_id}").as_str()).profile_str(tolerance)
 }
 
+pub struct CORS;
+
+#[rocket::async_trait]
+impl Fairing for CORS {
+    fn info(&self) -> Info {
+        Info {
+            name: "Add CORS headers to responses",
+            kind: Kind::Response,
+        }
+    }
+
+    async fn on_response<'r>(&self, _request: &'r Request<'_>, response: &mut Response<'r>) {
+        response.set_header(Header::new("Access-Control-Allow-Origin", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Methods", "POST, GET, PATCH, OPTIONS"));
+        response.set_header(Header::new("Access-Control-Allow-Headers", "*"));
+        response.set_header(Header::new("Access-Control-Allow-Credentials", "true"));
+    }
+}
+
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/network", routes![train, profile])
+    rocket::build().mount("/network", routes![train, profile]).attach(CORS)
 }
 
 
