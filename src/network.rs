@@ -16,7 +16,7 @@ use crate::function::{ActivationFunction, Function};
 use crate::function::ActivationFunction::RELU;
 use crate::layer::Layer;
 
-const EMNIST_PATH: &str = "C:/Users/logge/RustroverProjects/neural_network/resources/emnist_digits/";
+const EMNIST_PATH: &str = "./resources/emnist_digits/";
 
 #[derive(Clone, Debug)]
 pub(crate) struct Network {
@@ -150,7 +150,7 @@ impl Network {
                                       Failures: {fails}\n\
                                       Accuracy: {}", self.id, self.lr, self.training_iterations, self.layer_specs, successes as f32 / (fails + successes) as f32);
 
-        let profile_path = format!("C:/Users/logge/RustroverProjects/neural_network/resources/profiles/{}.txt", self.id);
+        let profile_path = format!("./resources/profiles/{}.txt", self.id);
 
         fs::write(profile_path, &profile).unwrap();
 
@@ -290,6 +290,6 @@ impl Network {
         self.id.clone()
     }
     pub fn save_to_def_path(&self) -> String {
-        self.save_to_path("C:/Users/logge/RustroverProjects/neural_network/resources/models")
+        self.save_to_path("./resources/models")
     }
 }

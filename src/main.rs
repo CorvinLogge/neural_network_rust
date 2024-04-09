@@ -28,7 +28,7 @@ struct TrainReq {
 
 #[get("/train?<r>")]
 fn train(r: TrainReq) -> Accepted<String> {
-    let mut training_data = emnist_parser::read_emnist("C:/Users/logge/RustroverProjects/neural_network/resources/emnist_digits/train/images", "C:/Users/logge/RustroverProjects/neural_network/resources/emnist_digits/train/labels");
+    let mut training_data = emnist_parser::read_emnist("./resources/emnist_digits/train/images", "./resources/emnist_digits/train/labels");
 
     let mut network = Network::new(r.layer_specs.as_slice(), r.lr, RELU);
 
