@@ -1,13 +1,14 @@
+use std::path::Path;
 use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
-use std::path::Path;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use indicatif::ProgressIterator;
 use nalgebra::DMatrix;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use rocket::yansi::Paint;
 
 use crate::data_point::DataPoint;
 use crate::emnist_parser::read_emnist;

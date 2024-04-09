@@ -41,8 +41,7 @@ fn train(r: TrainReq) -> Accepted<String> {
 
 #[get("/profile?<network_id>&<tolerance>")]
 fn profile(network_id: &str, tolerance: f32) -> String {
-    Network::from_file(format!("C:/Users/logge/RustroverProjects/neural_network/resources/models/{network_id}").as_str())
-        .profile_str(tolerance)
+    Network::from_file(format!("./resources/models/{network_id}").as_str()).profile_str(tolerance)
 }
 
 #[get("/")]
