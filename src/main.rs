@@ -19,11 +19,6 @@ mod emnist_parser;
 mod data_point;
 mod function;
 
-// #[get("/world")]
-// fn world() -> &'static str {
-//     "Hello, world!"
-// }
-
 #[derive(FromForm)]
 struct TrainReq {
     iterations: usize,
@@ -46,17 +41,18 @@ fn train(r: TrainReq) -> Accepted<String> {
 
 #[get("/profile?<network_id>&<tolerance>")]
 fn profile(network_id: &str, tolerance: f32) -> String {
-    Network::from_file(format!("C:/Users/logge/RustroverProjects/neural_network/resources/models/{network_id}").as_str()).profile_str(tolerance)
+    Network::from_file(format!("C:/Users/logge/RustroverProjects/neural_network/resources/models/{network_id}").as_str())
+        .profile_str(tolerance)
 }
 
 #[get("/")]
 fn test() -> String {
-    "Connection worked".to_string()
+    "Connection worked\n".to_string()
 }
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/network", routes![train, profile, test]).attach(CORS)
+    rocket::build().attach(CORS).mount("/network", routes![train, profile, test])
 }
 
 pub struct CORS;
