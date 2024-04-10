@@ -26,6 +26,8 @@ pub fn read_emnist(inputs_path: &str, targets_path: &str) -> Vec<DataPoint> {
         );
     }
 
+    generate_image(data_points.get(305).unwrap().clone());
+
     return data_points.clone();
 }
 
@@ -33,12 +35,15 @@ fn generate_image(data_point: DataPoint) {
     let mut image = ImageBuffer::new(28, 28);
 
     for (index, pix) in data_point.input.iter().enumerate() {
-        let x = index as f32 / 28.0;
-        let y = index as f32 % 28.0;
+        let x = index as f32 % 28.0;
+        let y = index as f32 / 28.0;
 
         image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([(*pix * 255.0) as u8, (*pix * 255.0) as u8, (*pix * 255.0) as u8]));
     }
 
     println!("{:?}", data_point.target);
+    image = image::imageops::rotate90(&image);
+    image = image::imageops::flip_horizontal(&image);
+
     image.save("test.png").unwrap();
 }

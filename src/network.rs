@@ -1,7 +1,7 @@
-use std::path::Path;
 use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
+use std::path::Path;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use indicatif::ProgressIterator;
@@ -128,7 +128,7 @@ impl Network {
         let mut fails = 0;
 
         for data_point in testing_data.iter().progress() {
-            let mut out = self.feedforward(&data_point.input);
+            let out = self.feedforward(&data_point.input);
 
             let expected = DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
 
@@ -169,7 +169,7 @@ impl Network {
         let mut fails = 0;
 
         for data_point in testing_data.iter().progress() {
-            let mut out = self.feedforward(&data_point.input);
+            let out = self.feedforward(&data_point.input);
 
             let expected = DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
 
@@ -198,7 +198,7 @@ impl Network {
         let mut layers: Vec<Layer> = Vec::new();
         let mut layer_specs: Vec<usize> = Vec::new();
 
-        let its = ((&paths.count() - 1) / 2);
+        let its = (&paths.count() - 1) / 2;
 
         for index in 0..its {
             let weights_path_string = format!("{file_path}/weights_{index}");
