@@ -1,6 +1,5 @@
 use nalgebra::DMatrix;
-
-use crate::function::{ActivationFunction, Function};
+use crate::function::{ActivationFunction, equ};
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -9,7 +8,7 @@ pub(crate) struct Layer {
     biases: DMatrix<f32>,
     net: DMatrix<f32>,
     outputs: DMatrix<f32>,
-    activation: ActivationFunction,
+    activation: ActivationFunction
 }
 
 impl Layer {
@@ -80,11 +79,9 @@ impl Layer {
         return self.biases.clone();
     }
     pub(crate) fn get_net(&self) -> DMatrix<f32> {
-        //DMatrix::<f32>::from_vec(self.net.nrows(), 1, self.net.column_mean().as_slice().to_vec())
         self.net.clone()
     }
     pub(crate) fn get_outputs(&self) -> DMatrix<f32> {
-        //DMatrix::<f32>::from_vec(self.outputs.nrows(), 1, self.outputs.column_mean().as_slice().to_vec())
         self.outputs.clone()
     }
     pub fn get_activation(&self) -> ActivationFunction {

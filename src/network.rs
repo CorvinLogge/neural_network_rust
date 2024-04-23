@@ -11,21 +11,23 @@ use rand::thread_rng;
 use rocket::yansi::Paint;
 
 use crate::data_sets::{DataPoint, read_emnist};
-use crate::function::{ActivationFunction, equ, Function, softmax};
+use crate::function::{ActivationFunction, equ, ErrorFunction};
 use crate::function::ActivationFunction::{RELU, SIGMOID};
+use crate::function::ErrorFunction::MSE;
 use crate::layer::{column_mean, Layer};
 use crate::plotter::FilePlotter;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Network {
-    pub(crate) layers: Vec<Layer>,
+    pub(crate) layers: Vec<Layer<>>,
     layer_specs: Vec<usize>,
     lr: f32,
     id: String,
+    error: ErrorFunction,
 }
 
 impl Network {
-    pub(crate) fn new(layer_specs: &[usize], lr: f32, activation: ActivationFunction) -> Network {
+    pub(crate) fn new(layer_specs: &[usize], lr: f32, activation: ActivationFunction, error: ErrorFunction) -> Network {
         let mut layers: Vec<Layer> = Vec::new();
 
         for index in 0..layer_specs.len() - 1 {
@@ -37,10 +39,11 @@ impl Network {
             layer_specs: layer_specs.to_vec(),
             lr,
             id: chrono::offset::Local::now().format("%d%m%Y%H%M%S").to_string(),
+            error,
         }
     }
 
-    pub fn relu_sig(layer_specs: &[usize], lr: f32) -> Network {
+    pub fn relu_sig(layer_specs: &[usize], lr: f32, error: ErrorFunction) -> Network {
         let mut layers: Vec<Layer> = Vec::new();
 
         for index in 0..layer_specs.len() - 1 {
@@ -56,6 +59,7 @@ impl Network {
             layer_specs: layer_specs.to_vec(),
             lr,
             id: chrono::offset::Local::now().format("%d%m%Y%H%M%S").to_string(),
+            error,
         }
     }
 
@@ -84,54 +88,9 @@ impl Network {
             out = layer.guess(out);
         }
 
+        out = out.map(equ(&out));
+
         return out;
-    }
-
-    pub(crate) fn backpropagation(&mut self, inputs: &Vec<f32>, targets: &Vec<f32>) {
-        let input_values: DMatrix<f32> = DMatrix::<f32>::from_vec(inputs.len(), 1, inputs.clone());
-        let target_values: DMatrix<f32> = DMatrix::<f32>::from_vec(targets.len(), 1, targets.clone());
-
-        let outputs: DMatrix<f32> = self.feedforward(&inputs);
-        let mut error: DMatrix<f32> = DMatrix::<f32>::zeros(0, 0);
-
-        for index in (0..self.layers.len()).rev() {
-            let prime_activated_net: DMatrix<f32> = self.layers.get(index).unwrap().get_net().map(self.layers.get(index).unwrap().get_activation().derivative());
-
-            let mut delta_biases: DMatrix<f32>;
-            let mut delta_weights: DMatrix<f32>;
-
-            if index == self.layers.len() - 1 {
-                let loss_derivative: DMatrix<f32> = &outputs - &target_values;
-
-                error = loss_derivative.clone().component_mul(&prime_activated_net);
-
-                delta_biases = error.clone();
-
-                let error_t: DMatrix<f32> = error.transpose();
-
-                delta_weights = self.layers.get(index - 1).unwrap().get_outputs() * error_t;
-            } else {
-                let left_side: DMatrix<f32> = self.layers.get(index + 1).unwrap().get_weights() * error;
-
-                error = left_side.component_mul(&prime_activated_net);
-
-                delta_biases = error.clone();
-
-                let error_t: DMatrix<f32> = error.transpose();
-
-                if index == 0 {
-                    delta_weights = &input_values * error_t;
-                } else {
-                    delta_weights = self.layers.get(index - 1).unwrap().get_outputs() * error_t;
-                }
-            }
-
-            delta_weights = delta_weights.scale(-&self.lr);
-            delta_biases = delta_biases.scale(-&self.lr);
-
-            self.layers.get_mut(index).unwrap().update_weights(delta_weights);
-            self.layers.get_mut(index).unwrap().update_biases(delta_biases);
-        }
     }
 
     pub(crate) fn backpropagation_batches(&mut self, batch: &[DataPoint]) {
@@ -156,7 +115,7 @@ impl Network {
             let mut delta_weights: DMatrix<f32>;
 
             if index == self.layers.len() - 1 {
-                let loss_derivative = (&outputs - &targets)/* * (1f32 / batch.len() as f32)*/;
+                let loss_derivative = self.error.derivative(&outputs, &targets);
 
                 error = loss_derivative.clone().component_mul(&prime_activated_net).cast();
 
@@ -222,33 +181,37 @@ impl Network {
         buffer
     }
 
-    pub(crate) fn train(&mut self, data: String, iterations: usize) {
-        let mut data_points = read_emnist(format!("{data}train/images"), format!("{data}train/labels"));
-
-        for _ in (0..iterations).progress() {
-            data_points.shuffle(&mut thread_rng());
-
-            for data_point in data_points.iter() {
-                self.backpropagation(&data_point.input, &data_point.target);
-            }
-        }
+    pub(crate) fn train(&mut self, data: String, epochs: usize) {
+        self.train_batches(data, epochs, 1);
     }
 
-    pub(crate) fn train_supervised(&mut self, data: String, iterations: usize, interval: usize) {
-        let mut data_points = read_emnist(format!("{data}train/images"), format!("{data}train/labels"));
+    pub(crate) fn train_plot(&mut self, data: String, epochs: usize) -> Vec<u8> {
+        self.train_batches_plot(data, epochs, 1)
+    }
 
-        for iteration in (0..iterations).progress() {
-            data_points.shuffle(&mut thread_rng());
+    pub fn profile_number(&self, tolerance: f32, data: String, number: usize) -> ProfileResult {
+        let test_images_path = format!("{data}test/images");
+        let test_labels_path = format!("{data}test/labels");
 
-            for data_point in data_points.iter().progress() {
-                self.backpropagation(&data_point.input, &data_point.target);
-            }
+        let full = read_emnist(test_images_path, test_labels_path);
+        let testing_data = full.iter().filter(|dp| *dp.target.get(number).unwrap() == 1.0).collect::<Vec<&DataPoint>>();
 
-            if (iteration % interval) == 0 {
-                println!("{}", self.profile_str(0.95, data.clone()));
-            }
+        let mut successes = 0;
+        let mut fails = 0;
+
+        for data_point in testing_data.iter() {
+            let mut out = self.guess(&data_point.input);
+
+            let expected = DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
+
+            let ex_index = expected.iter().position(|x| { *x == 1.0 }).unwrap();
+
+            if out.get(ex_index).unwrap() > &tolerance {
+                successes += 1;
+            } else { fails += 1; }
         }
-        println!("{}", self.profile_str(0.95, data.clone()));
+
+        ProfileResult::new(self.id.clone(), tolerance, successes, fails, successes as f32 / testing_data.len() as f32)
     }
 
     pub fn profile(&self, tolerance: f32, data: String) -> ProfileResult {
@@ -263,8 +226,6 @@ impl Network {
         for data_point in testing_data.iter() {
             let mut out = self.guess(&data_point.input);
 
-            out = out.map(equ(&out));
-
             let expected = DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
 
             let ex_index = expected.iter().position(|x| { *x == 1.0 }).unwrap();
@@ -274,7 +235,7 @@ impl Network {
             } else { fails += 1; }
         }
 
-        ProfileResult::new(self.id.clone(), tolerance, successes, fails, successes as f32 / (fails + successes) as f32)
+        ProfileResult::new(self.id.clone(), tolerance, successes, fails, successes as f32 / testing_data.len() as f32)
     }
 
     pub fn profile_str(&mut self, tolerance: f32, data: String) -> String {
@@ -299,7 +260,6 @@ impl Network {
         for _ in 0..layer_specs_len {
             layer_specs.push(byteorder::BigEndian::read_u32(network_bytes.drain(..4).collect::<Vec<u8>>().as_slice()));
         }
-
 
         for index in 0..layer_specs.len() - 1 {
             let num_ins = *layer_specs.get(index).unwrap();
@@ -334,6 +294,7 @@ impl Network {
             layer_specs: layer_specs.iter().map(move |x| { *x as usize }).collect(),
             lr,
             id: Path::new(file_path.as_str()).file_name().unwrap().to_str().unwrap().to_string(),
+            error: MSE,
         }
     }
 
@@ -382,7 +343,8 @@ impl Network {
     }
 }
 
-struct ProfileResult {
+#[derive(Debug)]
+pub struct ProfileResult {
     model: String,
     tolerance: f32,
     successes: u32,

@@ -4,7 +4,7 @@ use std::f32::consts::E;
 use nalgebra::DMatrix;
 use num_traits::Pow;
 use rand::{random, Rng, thread_rng};
-use serde::{Deserialize, Serialize};
+use rocket::serde::{Deserialize, Serialize};
 
 const L_RELU: fn(f32) -> f32 = |x| {
     if x >= 0f32 {
@@ -14,7 +14,7 @@ const L_RELU: fn(f32) -> f32 = |x| {
     }
 };
 const L_RELU_P: fn(f32) -> f32 = |x| {
-    return if x < 0.0 { 0.025 } else { 1.0 }; // 0,025 / 0,0125
+    return if x < 0.0 { 0.025 } else { 1.0 };
 };
 
 const RELU: fn(f32) -> f32 = |x| f32::max(0.0, x);
@@ -40,11 +40,27 @@ pub fn equ(mat: &DMatrix<f32>) -> Box<dyn Fn(f32) -> f32> {
     Box::new(move |v| v / sum)
 }
 
-pub trait Function {
-    fn derivative(&self) -> Box<impl Fn(f32) -> f32>;
-    fn original(&self) -> Box<impl Fn(f32) -> f32>;
-    fn weight_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32>;
-    fn bias_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32>;
+#[derive(Clone, Copy)]
+#[derive(Debug)]
+#[derive(Serialize, Deserialize)]
+#[derive(PartialEq)]
+pub enum ErrorFunction {
+    MSE,
+    CrossEntropy,
+}
+
+impl ErrorFunction {
+    pub fn derivative(&self, outputs: &DMatrix<f32>, targets: &DMatrix<f32>) -> DMatrix<f32> {
+        match self {
+            ErrorFunction::MSE => { outputs - targets }
+            ErrorFunction::CrossEntropy => {
+                let left = targets.clone().component_div(&outputs.clone());
+                let right = targets.clone().map(move |v| 1f32 - v).component_div(&outputs.clone().map(move |v| 1f32 - v));
+
+                right - left
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -52,13 +68,13 @@ pub trait Function {
 #[derive(Serialize, Deserialize)]
 #[derive(PartialEq)]
 pub enum ActivationFunction {
-    LRELU,
     RELU,
+    LRELU,
     SIGMOID,
 }
 
-impl Function for ActivationFunction {
-    fn derivative(&self) -> Box<impl Fn(f32) -> f32> {
+impl ActivationFunction {
+    pub(crate) fn derivative(&self) -> Box<impl Fn(f32) -> f32> {
         match self {
             ActivationFunction::RELU => { Box::new(RELU_P) }
             ActivationFunction::LRELU => { Box::new(L_RELU_P) }
@@ -66,7 +82,7 @@ impl Function for ActivationFunction {
         }
     }
 
-    fn original(&self) -> Box<impl Fn(f32) -> f32> {
+    pub(crate) fn original(&self) -> Box<impl Fn(f32) -> f32> {
         match self {
             ActivationFunction::RELU => { Box::new(RELU) }
             ActivationFunction::LRELU => { Box::new(L_RELU) }
@@ -74,7 +90,7 @@ impl Function for ActivationFunction {
         }
     }
 
-    fn weight_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32> {
+    pub(crate) fn weight_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32> {
         match self {
             ActivationFunction::RELU => { Box::new(HE_INIT(ins)) }
             ActivationFunction::LRELU => { Box::new(HE_INIT(ins)) }
@@ -82,7 +98,7 @@ impl Function for ActivationFunction {
         }
     }
 
-    fn bias_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32> {
+    pub(crate) fn bias_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32> {
         match self {
             ActivationFunction::RELU => { Box::new(RAND_0_1) }
             ActivationFunction::LRELU => { Box::new(ZERO) }

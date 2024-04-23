@@ -20,11 +20,11 @@ impl ImageProcessor {
             image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val, *val, *val]));
         }
 
-        image.save("original_image.png").unwrap();
+        //image.save("original_image.png").unwrap();
 
         image = image::imageops::resize(&image, 28, 28, FilterType::Lanczos3);
 
-        image.save("resized_image.png").unwrap();
+        //image.save("resized_image.png").unwrap();
 
         let mut sum: u32 = 0;
         let mut w_sum: u32 = 0;
@@ -69,10 +69,12 @@ impl ImageProcessor {
             }
         }
 
-        centered_image.save("centered_image.png").unwrap();
+        //centered_image.save("centered_image.png").unwrap();
 
-        centered_image = image::imageops::rotate270(&centered_image);
+        centered_image = image::imageops::rotate90(&centered_image);
         centered_image = image::imageops::flip_horizontal(&centered_image);
+
+        //centered_image.save("fixed_rotation_image.png").unwrap();
 
         centered_image.pixels().map(|pix| { pix.0[0] as f32 / 255f32 }).collect()
     }
