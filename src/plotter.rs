@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use eframe::egui::{self};
-use egui_plot::{Legend, Line, PlotPoints};
+// use eframe::egui::{self};
+// use egui_plot::{Legend, Line, PlotPoints};
 use plotters::prelude::*;
 
 pub struct FilePlotter {
@@ -67,67 +67,67 @@ impl FilePlotter {
 }
 
 
-pub(crate) struct LivePlotter {
-    lock_x: bool,
-    lock_y: bool,
-    ctrl_to_zoom: bool,
-    shift_to_horizontal: bool,
-    zoom_speed: f32,
-    scroll_speed: f32,
-    points: Arc<Mutex<Vec<[f64; 2]>>>,
-    epochs: f64,
-}
-
-impl LivePlotter {
-    pub fn new(points: Arc<Mutex<Vec<[f64; 2]>>>, epochs: f64) -> LivePlotter {
-        LivePlotter {
-            lock_x: false,
-            lock_y: false,
-            ctrl_to_zoom: false,
-            shift_to_horizontal: false,
-            zoom_speed: 1.0,
-            scroll_speed: 1.0,
-            points,
-            epochs,
-        }
-    }
-}
-
-impl Default for LivePlotter {
-    fn default() -> Self {
-        Self {
-            lock_x: false,
-            lock_y: false,
-            ctrl_to_zoom: false,
-            shift_to_horizontal: false,
-            zoom_speed: 1.0,
-            scroll_speed: 1.0,
-            points: Arc::new(Mutex::new(Vec::new())),
-            epochs: 100f64,
-        }
-    }
-}
-
-impl eframe::App for LivePlotter {
-    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            egui_plot::Plot::new("plot")
-                .y_axis_label("Accuracy")
-                .x_axis_label("Epochs")
-                .include_x(self.epochs)
-                .include_y(100)
-                .allow_zoom(false)
-                .allow_drag(false)
-                .allow_scroll(false)
-                .allow_boxed_zoom(false)
-                .allow_double_click_reset(false)
-                .legend(Legend::default())
-                .show(ui, |plot_ui| {
-                    let acc_points = PlotPoints::new(self.points.lock().unwrap().clone());
-                    plot_ui.line(Line::new(acc_points).name("Accuracy"));
-                });
-        });
-
-        ctx.request_repaint();
-    }
-}
+// pub(crate) struct LivePlotter {
+//     lock_x: bool,
+//     lock_y: bool,
+//     ctrl_to_zoom: bool,
+//     shift_to_horizontal: bool,
+//     zoom_speed: f32,
+//     scroll_speed: f32,
+//     points: Arc<Mutex<Vec<[f64; 2]>>>,
+//     epochs: f64,
+// }
+//
+// impl LivePlotter {
+//     pub fn new(points: Arc<Mutex<Vec<[f64; 2]>>>, epochs: f64) -> LivePlotter {
+//         LivePlotter {
+//             lock_x: false,
+//             lock_y: false,
+//             ctrl_to_zoom: false,
+//             shift_to_horizontal: false,
+//             zoom_speed: 1.0,
+//             scroll_speed: 1.0,
+//             points,
+//             epochs,
+//         }
+//     }
+// }
+//
+// impl Default for LivePlotter {
+//     fn default() -> Self {
+//         Self {
+//             lock_x: false,
+//             lock_y: false,
+//             ctrl_to_zoom: false,
+//             shift_to_horizontal: false,
+//             zoom_speed: 1.0,
+//             scroll_speed: 1.0,
+//             points: Arc::new(Mutex::new(Vec::new())),
+//             epochs: 100f64,
+//         }
+//     }
+// }
+//
+// impl eframe::App for LivePlotter {
+//     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+//         egui::CentralPanel::default().show(ctx, |ui| {
+//             egui_plot::Plot::new("plot")
+//                 .y_axis_label("Accuracy")
+//                 .x_axis_label("Epochs")
+//                 .include_x(self.epochs)
+//                 .include_y(100)
+//                 .allow_zoom(false)
+//                 .allow_drag(false)
+//                 .allow_scroll(false)
+//                 .allow_boxed_zoom(false)
+//                 .allow_double_click_reset(false)
+//                 .legend(Legend::default())
+//                 .show(ui, |plot_ui| {
+//                     let acc_points = PlotPoints::new(self.points.lock().unwrap().clone());
+//                     plot_ui.line(Line::new(acc_points).name("Accuracy"));
+//                 });
+//         });
+//
+//         ctx.request_repaint();
+//     }
+// }
