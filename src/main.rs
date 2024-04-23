@@ -1,6 +1,12 @@
 #[macro_use]
 extern crate rocket;
 
+use std::fmt::format;
+use std::ops::Add;
+use std::string::ToString;
+
+use image::{ImageBuffer, Rgb};
+use nalgebra::DMatrix;
 use rocket::{Request, Response};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::form::FromForm;
@@ -9,17 +15,20 @@ use rocket::response::status::Accepted;
 use rocket::serde::json::Json;
 use serde::{Deserialize, Serialize};
 
-use crate::function::ActivationFunction::RELU;
+use crate::function::ActivationFunction::{LRELU, RELU, SIGMOID};
 use crate::function::Function;
 use crate::image_processor::ImageProcessor;
 use crate::network::Network;
 
 mod layer;
 mod network;
-mod emnist_parser;
-mod data_point;
+mod data_sets;
 mod function;
 mod image_processor;
+mod plotter;
+
+const EMNIST_PATH: &str = "./resources/emnist_digits/";
+const MNIST_PATH: &str = "./resources/mnist/";
 
 #[derive(FromForm)]
 struct TrainReq {
@@ -28,39 +37,109 @@ struct TrainReq {
     layer_specs: Vec<usize>,
 }
 
+#[derive(FromForm)]
+struct TrainBatchReq {
+    batch_size: usize,
+    epochs: usize,
+    lr: f32,
+    layer_specs: Vec<usize>,
+    activation_mode: String,
+    data: String,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
 #[derive(Debug)]
 struct GuessReq {
     network_id: String,
-    image: Vec<usize>,
+    image: String,
 }
 
 #[get("/train?<r>")]
 fn train(r: TrainReq) -> Accepted<String> {
-    let mut training_data = emnist_parser::read_emnist("./resources/emnist_digits/train/images", "./resources/emnist_digits/train/labels");
-
     let mut network = Network::new(r.layer_specs.as_slice(), r.lr, RELU);
 
-    network.train(&mut training_data, r.iterations);
+    let data = EMNIST_PATH.to_string();
+
+    network.train_supervised(data, r.iterations, 100_000);
 
     let id = network.save_to_def_path();
 
     Accepted(format!("Successfully trained model: {id}"))
 }
 
-#[get("/profile?<network_id>&<tolerance>")]
-fn profile(network_id: &str, tolerance: f32) -> String {
-    Network::from_file(format!("./resources/models/{network_id}").as_str()).profile_str(tolerance)
+#[get("/train/batches?<r>")]
+fn train_batches(r: TrainBatchReq) -> Accepted<String> {
+    let mut network;
+    let mut data;
+
+    match r.data.as_str() {
+        "mnist_digits" => data = MNIST_PATH.to_owned(),
+        "e_mnist_digits" => data = EMNIST_PATH.to_owned(),
+        _ => data = EMNIST_PATH.to_owned(),
+    }
+
+    match r.activation_mode.as_str() {
+        "relu_sig" => network = Network::relu_sig(r.layer_specs.as_slice(), r.lr),
+        "relu" => network = Network::new(r.layer_specs.as_slice(), r.lr, RELU),
+        "sigmoid" => network = Network::new(r.layer_specs.as_slice(), r.lr, SIGMOID),
+        _ => network = Network::relu_sig(r.layer_specs.as_slice(), r.lr),
+    }
+
+    network.train_batches(data, r.epochs, r.batch_size);
+
+    let id = network.save_to_def_path();
+
+    Accepted(format!("Successfully trained model: {id}"))
+}
+
+#[get("/train/batches/plot?<r>")]
+fn train_batches_plot(r: TrainBatchReq) -> Accepted<String> {
+    let mut network;
+    let mut data;
+
+    match r.data.as_str() {
+        "mnist_digits" => data = MNIST_PATH.to_owned(),
+        "e_mnist_digits" => data = EMNIST_PATH.to_owned(),
+        _ => data = EMNIST_PATH.to_owned(),
+    }
+
+    match r.activation_mode.as_str() {
+        "relu_sig" => network = Network::relu_sig(r.layer_specs.as_slice(), r.lr),
+        "relu" => network = Network::new(r.layer_specs.as_slice(), r.lr, RELU),
+        "sigmoid" => network = Network::new(r.layer_specs.as_slice(), r.lr, SIGMOID),
+        _ => network = Network::relu_sig(r.layer_specs.as_slice(), r.lr),
+    }
+
+    let plot = network.train_batches_plot(data, r.epochs, r.batch_size);
+
+    let id = network.save_to_def_path();
+
+    let image: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_vec(640, 480, plot).unwrap();
+    image.save(format!("./resources/plots/{id}.png")).unwrap();
+
+
+    Accepted(format!("Successfully trained model: {id}"))
+}
+
+#[get("/profile?<network_id>&<tolerance>&<data>")]
+fn profile(network_id: &str, tolerance: f32, data: String) -> String {
+    let mut data_path;
+
+    match data.as_str() {
+        "mnist_digits" => data_path = MNIST_PATH.to_owned(),
+        "e_mnist_digits" => data_path = EMNIST_PATH.to_owned(),
+        _ => data_path = EMNIST_PATH.to_owned(),
+    }
+
+    Network::relu_sig_from_file(format!("./resources/models/{network_id}")).profile_str(tolerance, data_path)
 }
 
 #[post("/guess", data = "<r>")]
 fn guess(r: Json<GuessReq>) -> Json<Vec<f32>> {
-
-    // Preprocess incoming image
-
-    let binding = Network::from_file(format!("./resources/models/{}", r.network_id).as_str()).feedforward(&ImageProcessor::from_vec(r.image.clone()));
-    let data = binding.data.as_vec();
+    let mut network = Network::relu_sig_from_file(format!("./resources/models/{}", r.network_id));
+    let guess = network.guess(&ImageProcessor::from_data_url(&*r.image));
+    let data = guess.data.as_vec();
     Json::from(data.clone())
 }
 
@@ -76,8 +155,18 @@ fn all_options() {
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/network", routes![train, profile, test, guess, all_options]).attach(CORS)
+    rocket::build().mount("/network", routes![train_batches, train_batches_plot, profile, test, guess, all_options]).attach(CORS)
 }
+
+// fn main() {
+//     let mut a = DMatrix::<u32>::from_vec(3, 1, vec![0,1,2]);
+//     let mut b = DMatrix::<u32>::from_vec(3, 1, vec![2,1,0]);
+//
+//     let mut c = a + b;
+//     let d = -5;
+//
+//     println!("{}", d)
+// }
 
 pub struct CORS;
 

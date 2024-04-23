@@ -1,3 +1,5 @@
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use image::{ImageBuffer, Rgb};
 use image::imageops::FilterType;
 use rocket::yansi::Paint;
@@ -5,7 +7,9 @@ use rocket::yansi::Paint;
 pub struct ImageProcessor {}
 
 impl ImageProcessor {
-    pub fn from_vec(vec: Vec<usize>) -> Vec<f32> {
+    pub fn from_data_url(url: &str) -> Vec<f32> {
+        let vec = BASE64_STANDARD.decode(url).unwrap();
+
         let width = f32::sqrt(vec.len() as f32) as u32;
         let mut image = ImageBuffer::new(width, width);
 
@@ -13,7 +17,7 @@ impl ImageProcessor {
             let x = index as f32 % width as f32;
             let y = index as f32 / width as f32;
 
-            image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([(*val) as u8, (*val) as u8, (*val) as u8]));
+            image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val, *val, *val]));
         }
 
         image.save("original_image.png").unwrap();
