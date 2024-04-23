@@ -31,8 +31,13 @@ const XAVIER_INIT: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> = |ins| Box::ne
 const ZERO: fn(usize, usize) -> f32 = |_, _| 0.0;
 
 pub fn softmax(mat: &DMatrix<f32>) -> Box<dyn Fn(f32) -> f32> {
-    let sum: f32 = mat.iter().map(|v| { E.pow(v - mat.max()) }).sum();
+    let sum: f32 = mat.iter().map(|v| { E.pow(v) }).sum();
     Box::new(move |v| E.pow(v) / sum)
+}
+
+pub fn equ(mat: &DMatrix<f32>) -> Box<dyn Fn(f32) -> f32> {
+    let sum: f32 = mat.sum();
+    Box::new(move |v| v / sum)
 }
 
 pub trait Function {

@@ -11,7 +11,7 @@ use rand::thread_rng;
 use rocket::yansi::Paint;
 
 use crate::data_sets::{DataPoint, read_emnist};
-use crate::function::{ActivationFunction, Function};
+use crate::function::{ActivationFunction, equ, Function, softmax};
 use crate::function::ActivationFunction::{RELU, SIGMOID};
 use crate::layer::{column_mean, Layer};
 use crate::plotter::FilePlotter;
@@ -36,7 +36,7 @@ impl Network {
             layers,
             layer_specs: layer_specs.to_vec(),
             lr,
-            id: chrono::offset::Local::now().format("%d.%m.%Y_%H-%M-%S").to_string(),
+            id: chrono::offset::Local::now().format("%d%m%Y%H%M%S").to_string(),
         }
     }
 
@@ -55,7 +55,7 @@ impl Network {
             layers,
             layer_specs: layer_specs.to_vec(),
             lr,
-            id: chrono::offset::Local::now().format("%d.%m.%Y_%H-%M-%S").to_string(),
+            id: chrono::offset::Local::now().format("%d%m%Y%H%M%S").to_string(),
         }
     }
 
@@ -260,10 +260,10 @@ impl Network {
         let mut successes = 0;
         let mut fails = 0;
 
-        for data_point in testing_data.iter().progress() {
+        for data_point in testing_data.iter() {
             let mut out = self.guess(&data_point.input);
 
-            //out = out.map(softmax(&out));
+            out = out.map(equ(&out));
 
             let expected = DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
 
@@ -288,103 +288,94 @@ impl Network {
     }
 
     pub fn relu_sig_from_file(file_path: String) -> Network {
-        let paths = fs::read_dir(&file_path).unwrap();
+        let network_path = format!("{file_path}/network");
+        let mut network_bytes = VecDeque::from(fs::read(network_path).unwrap());
 
-        let mut layers: Vec<Layer> = Vec::new();
-        let mut layer_specs: Vec<usize> = Vec::new();
+        let layer_specs_len = byteorder::BigEndian::read_u32(network_bytes.drain(..4).collect::<Vec<u8>>().as_slice());
 
-        let its = (&paths.count() - 1) / 2;
+        let mut layer_specs = Vec::new();
+        let mut layers = Vec::new();
 
-        for index in 0..its {
-            let weights_path_string = format!("{file_path}/weights_{index}");
-            let mut weight_bytes = VecDeque::from(fs::read(weights_path_string).unwrap());
-
-            let num_rows_w = byteorder::BigEndian::read_u32(weight_bytes.drain(..4).collect::<Vec<u8>>().as_slice());
-            let num_cols_w = byteorder::BigEndian::read_u32(weight_bytes.drain(..4).collect::<Vec<u8>>().as_slice());
-
-            let mut weight_data: Vec<f32> = Vec::new();
-
-            while !weight_bytes.is_empty() {
-                weight_data.push(byteorder::BigEndian::read_f32(weight_bytes.drain(..4).collect::<Vec<u8>>().as_slice()));
-            }
-
-            let weights = DMatrix::<f32>::from_vec(num_rows_w as usize, num_cols_w as usize, weight_data);
-
-            let biases_path_string = format!("{file_path}/biases_{index}");
-            let mut biases_bytes = VecDeque::from(fs::read(biases_path_string).unwrap());
-
-            let num_rows_b = byteorder::BigEndian::read_u32(biases_bytes.drain(..4).collect::<Vec<u8>>().as_slice());
-            let num_cols_b = byteorder::BigEndian::read_u32(biases_bytes.drain(..4).collect::<Vec<u8>>().as_slice());
-
-            let mut bias_data: Vec<f32> = Vec::new();
-
-            while !biases_bytes.is_empty() {
-                bias_data.push(byteorder::BigEndian::read_f32(biases_bytes.drain(..4).collect::<Vec<u8>>().as_slice()));
-            }
-
-            let biases = DMatrix::<f32>::from_vec(num_rows_b as usize, num_cols_b as usize, bias_data);
-
-            if index == its - 1 {
-                layers.push(Layer::from(weights.clone(), biases.clone(), SIGMOID));
-            } else {
-                layers.push(Layer::from(weights.clone(), biases.clone(), RELU));
-            }
-
-            layer_specs.push(num_rows_w as usize);
-
-            if index == its - 1 { layer_specs.push(num_rows_b as usize) }
+        for _ in 0..layer_specs_len {
+            layer_specs.push(byteorder::BigEndian::read_u32(network_bytes.drain(..4).collect::<Vec<u8>>().as_slice()));
         }
 
-        let lr_path = format!("{}/lr", file_path.clone());
-        let lr = byteorder::BigEndian::read_f32(fs::read(lr_path).unwrap().as_slice());
+
+        for index in 0..layer_specs.len() - 1 {
+            let num_ins = *layer_specs.get(index).unwrap();
+            let num_outs = *layer_specs.get(index + 1).unwrap();
+
+            let mut weight_data: Vec<f32> = Vec::new();
+            let mut bias_data: Vec<f32> = Vec::new();
+
+            for _ in 0..(num_ins * num_outs) {
+                weight_data.push(byteorder::BigEndian::read_f32(network_bytes.drain(..4).collect::<Vec<u8>>().as_slice()));
+            }
+
+            for _ in 0..num_outs {
+                bias_data.push(byteorder::BigEndian::read_f32(network_bytes.drain(..4).collect::<Vec<u8>>().as_slice()));
+            }
+
+            let weights = DMatrix::<f32>::from_vec(num_ins as usize, num_outs as usize, weight_data);
+            let biases = DMatrix::<f32>::from_vec(num_outs as usize, 1, bias_data);
+
+            if index == layer_specs.len() - 2 {
+                layers.push(Layer::from(weights, biases, SIGMOID));
+            } else {
+                layers.push(Layer::from(weights, biases, RELU));
+            }
+        }
+
+        let lr = byteorder::BigEndian::read_f32(network_bytes.drain(..4).collect::<Vec<u8>>().as_slice());
+
 
         Network {
             layers,
-            layer_specs,
+            layer_specs: layer_specs.iter().map(move |x| { *x as usize }).collect(),
             lr,
             id: Path::new(file_path.as_str()).file_name().unwrap().to_str().unwrap().to_string(),
         }
     }
 
-    // File format: first 4 bytes are number of rows, next 4 are number of columns every next 4 bytes are the values
-    pub fn save_to_path(&self, dir_path: &str) -> String
-    {
+    // File Format:
+    // First 4 Bytes -> number of layers + 1 as u32
+    // Next 4 * (number of layers + 1) Bytes -> number of inputs/outputs to layer
+    // Next (inputs * outputs) Bytes -> Weights of first layer
+    // Next (outputs * 1) Bytes -> Biases of first layer
+    // Repeat for all layers
+    // Last 4 Bytes -> learn rate as f32
+    pub fn save_to_path(&self, dir_path: &str) -> String {
         let id = &self.id;
         let folder_path_string = format!("{dir_path}/{id}");
         let folder_path = Path::new(folder_path_string.as_str());
         fs::create_dir_all(folder_path).unwrap();
 
-        for (index, layer) in self.layers.iter().enumerate().progress() {
-            let weights_path_string = format!("{folder_path_string}/weights_{index}");
-            let biases_path_string = format!("{folder_path_string}/biases_{index}");
-            let weights_path = Path::new(weights_path_string.as_str());
-            let biases_path = Path::new(biases_path_string.as_str());
+        let network_path_string = format!("{folder_path_string}/network");
+        let network_path = Path::new(network_path_string.as_str());
 
-            let mut weights_file = File::create(weights_path).unwrap();
-            let mut biases_file = File::create(biases_path).unwrap();
+        let mut network_file = File::create(network_path).unwrap();
 
-            weights_file.write_u32::<BigEndian>(layer.get_weights().shape().0 as u32).unwrap();
-            weights_file.write_u32::<BigEndian>(layer.get_weights().shape().1 as u32).unwrap();
+        network_file.write_u32::<BigEndian>(self.layer_specs.len() as u32).unwrap();
 
+        for spec in &self.layer_specs {
+            network_file.write_u32::<BigEndian>(*spec as u32).unwrap();
+        }
+
+        for layer in self.layers.iter() {
             for value in layer.get_weights().data.as_slice() {
-                weights_file.write_f32::<BigEndian>(*value).unwrap()
+                network_file.write_f32::<BigEndian>(*value).unwrap()
             }
 
-            biases_file.write_u32::<BigEndian>(layer.get_biases().shape().0 as u32).unwrap();
-            biases_file.write_u32::<BigEndian>(layer.get_biases().shape().1 as u32).unwrap();
-
             for value in layer.get_biases().data.as_slice() {
-                biases_file.write_f32::<BigEndian>(*value).unwrap()
+                network_file.write_f32::<BigEndian>(*value).unwrap()
             }
         }
 
-        let lr_path_string = format!("{folder_path_string}/lr");
-        let mut lr_file = File::create(Path::new(lr_path_string.as_str())).unwrap();
-
-        lr_file.write_f32::<BigEndian>(self.lr).unwrap();
+        network_file.write_f32::<BigEndian>(self.lr).unwrap();
 
         self.id.clone()
     }
+
 
     pub fn save_to_def_path(&self) -> String {
         self.save_to_path("./resources/models")

@@ -116,7 +116,7 @@ fn train_batches_plot(r: TrainBatchReq) -> Accepted<String> {
     let id = network.save_to_def_path();
 
     let image: ImageBuffer<Rgb<u8>, Vec<u8>> = ImageBuffer::from_vec(640, 480, plot).unwrap();
-    image.save(format!("./resources/plots/{id}.png")).unwrap();
+    image.save(format!("./resources/models/{id}/plot.png")).unwrap();
 
 
     Accepted(format!("Successfully trained model: {id}"))
