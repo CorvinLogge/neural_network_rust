@@ -1,2 +1,8 @@
 /target
-/resources/profiles
+/resources/emnist_balanced
+/resources/emnist_byclass
+/resources/emnist_digits
+/resources/emnist_letters
+/resources/emnist_source
+/resources/mnist
+.idea/
