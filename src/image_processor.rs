@@ -22,7 +22,7 @@ macro_rules! preprocess {
             debug_only!({
                 let method_name = type_name_of($function);
                 let regex = Regex::new(".*::").unwrap();
-                let filename = regex.replace_all(method_name, "").deref().to_string().add(".png");
+                let filename = "logs/".to_string().add(&*regex.replace_all(method_name, "").deref().to_string().add(".png"));
                 image.save(filename).unwrap();
             });
         )*
@@ -51,13 +51,10 @@ impl ImageProcessor {
             let num = (&chunk[0..(chunk.len() - 1)]).parse::<usize>()?;
             let val = (&chunk[(chunk.len() - 1)..]).parse::<u8>()?;
 
-            println!("{}", num);
-
             vec.append(&mut vec![val; num]);
         }
 
         let width = f32::sqrt(vec.len() as f32) as u32;
-        println!("{}", vec.len());
         let mut image = ImageBuffer::new(width, width);
 
         for (index, val) in vec.iter().enumerate() {
@@ -67,7 +64,7 @@ impl ImageProcessor {
             image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val * 255, *val * 255, *val * 255]));
         }
 
-        debug_only!(image.save("original_image.png").unwrap());
+        debug_only!(image.save("logs/original_image.png").unwrap());
 
         let clusters = get_clusters(&image, 100);
         let max_cluster = get_max_cluster(clusters);
