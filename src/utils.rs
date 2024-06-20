@@ -1,5 +1,6 @@
 use std::io;
 use std::io::Cursor;
+use std::num::ParseIntError;
 
 use image::ImageError;
 use rocket::{Request, Response};
@@ -92,6 +93,12 @@ impl From<serde_json::Error> for Error {
 
 impl From<ImageError> for Error {
     fn from(value: ImageError) -> Self {
+        Self::new(value.to_string(), Status::new(500))
+    }
+}
+
+impl From<ParseIntError> for Error {
+    fn from(value: ParseIntError) -> Self {
         Self::new(value.to_string(), Status::new(500))
     }
 }

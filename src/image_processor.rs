@@ -11,6 +11,7 @@ use regex::Regex;
 
 use crate::DEBUG;
 use crate::debug_only;
+use crate::utils::Error;
 
 macro_rules! preprocess {
     ($image:expr, $($function:ident $(($($args:expr),*))?),*) => {{
@@ -40,17 +41,30 @@ type Image = ImageBuffer<Rgb<u8>, Vec<u8>>;
 pub struct ImageProcessor {}
 
 impl ImageProcessor {
-    pub fn from_data_url(url: &str) -> Vec<f32> {
-        let vec = BASE64_STANDARD.decode(url).unwrap();
+    pub fn from_rle(input: &String) -> Result<Vec<f32>, Error> {
+        let mut vec: Vec<u8> = Vec::new();
+
+        let chunks = input.split(";");
+
+        for chunk in chunks {
+            if chunk.len() == 0 { continue; }
+            let num = (&chunk[0..(chunk.len() - 1)]).parse::<usize>()?;
+            let val = (&chunk[(chunk.len() - 1)..]).parse::<u8>()?;
+
+            println!("{}", num);
+
+            vec.append(&mut vec![val; num]);
+        }
 
         let width = f32::sqrt(vec.len() as f32) as u32;
+        println!("{}", vec.len());
         let mut image = ImageBuffer::new(width, width);
 
         for (index, val) in vec.iter().enumerate() {
             let x = index as f32 % width as f32;
             let y = index as f32 / width as f32;
 
-            image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val, *val, *val]));
+            image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val * 255, *val * 255, *val * 255]));
         }
 
         debug_only!(image.save("original_image.png").unwrap());
@@ -67,7 +81,7 @@ impl ImageProcessor {
             center
         );
 
-        image.pixels().map(|pix| pix.0[0] as f32 / 255f32).collect()
+        Ok(image.pixels().map(|pix| pix.0[0] as f32 / 255f32).collect())
     }
 }
 

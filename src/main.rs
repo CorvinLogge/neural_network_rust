@@ -135,7 +135,7 @@ fn profile_digit(
 #[post("/guess", data = "<request>")]
 fn guess(request: Json<GuessReq>) -> Result<Json<Vec<f32>>, Error> {
     let mut network = Network::from_file(format!("./resources/models/{}", request.network_id))?;
-    let guess = network.guess(&ImageProcessor::from_data_url(&*request.image));
+    let guess = network.guess(&ImageProcessor::from_rle(&request.image)?);
     let data = guess.data.as_vec();
     Ok(Json::from(data.clone()))
 }
