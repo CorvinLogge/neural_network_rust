@@ -1,5 +1,4 @@
 #![allow(unused)]
-#![allow(non_camel_case_types)]
 
 #[macro_use]
 extern crate rocket;
@@ -18,7 +17,7 @@ use crate::data_sets::{DataSet, read_emnist_test};
 use crate::function::ActivationFunction::{SIGMOID};
 use crate::function::ErrorFunction;
 use crate::image_processor::ImageProcessor;
-use crate::layer::LayerType;
+use crate::layer::{Layer, LayerType};
 use crate::network::{ActivationMode, Network, ProfileResult};
 use crate::optimizers::Optimizer;
 use crate::plotter::file_plot;
@@ -36,32 +35,33 @@ mod layer;
 static mut DEBUG: bool = false;
 static NET_ID_PATTERN: &str = "%Y%m%d%H%M%S";
 
-
 #[derive(Deserialize)]
 struct TrainBatchReq {
     batch_size: usize,
     epochs: usize,
-    lr: f32,
-    layer_specs: Vec<usize>,
-    layer_types: Vec<LayerType>,
-    activation_mode: ActivationMode,
-    optimizer: Optimizer,
-    data: DataSet,
-    error_function: ErrorFunction,
+    network: Network,
 }
 
-#[derive(Deserialize, Serialize)]
-#[derive(Debug)]
+#[derive(Deserialize)]
+struct ProfileReq {
+    network_id: String,
+    tolerance: f32,
+    data_set: DataSet,
+}
+
+#[derive(Deserialize, Serialize, Debug)]
 struct GuessReq {
     network_id: String,
     image: String,
 }
 
 #[post("/train/batches", data = "<request>", format = "application/json")]
-fn train_batches(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error> {
-    let mut network = Network::with_mode(request.layer_specs.as_slice(), request.lr, request.error_function, request.activation_mode, request.layer_types.clone(), request.optimizer)?;
+fn train_batches(mut request: Json<TrainBatchReq>) -> Result<Json<Value>, Error> {
+    let mut network = request.network.clone();
 
-    network.train_batches(request.data, request.epochs, request.batch_size)?;
+    network.init();
+
+    network.train_batches(request.epochs, request.batch_size)?;
 
     let id = network.save_to_def_path()?;
 
@@ -74,15 +74,11 @@ fn train_batches(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error> {
 
 #[post("/train/batches/plot", data = "<request>", format = "application/json")]
 fn train_batches_plot(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error> {
-    let mut network = Network::with_mode(request.layer_specs.as_slice(), request.lr, request.error_function, request.activation_mode, request.layer_types.clone(), request.optimizer)?;
+    let mut network = request.network.clone();
 
-    let plot = network.train_batches_plot(request.data, request.epochs, request.batch_size)?;
+    network.init();
 
-    debug_only!(
-        for (i, layer) in network.layers.iter().enumerate() {
-            println!("weights layer {i}: {}", layer.weights());
-            println!("biases layer {i}: {}", layer.biases());
-    });
+    let plot = network.train_batches_plot(request.epochs, request.batch_size)?;
 
     let id = network.save_to_def_path()?;
 
@@ -106,30 +102,17 @@ fn train_batches_plot(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error
     )))
 }
 
-#[get("/profile?<network_id>&<tolerance>&<data_set>")]
-fn profile(network_id: &str, tolerance: f32, data_set: DataSet) -> Result<Json<ProfileResult>, Error> {
-    let data_path = data_set.path();
-    let num_classes = data_set.num_classes();
+#[post("/profile", data = "<request>", format = "application/json")]
+fn profile(request: Json<ProfileReq>) -> Result<Json<ProfileResult>, Error> {
+    let data_path = request.data_set.path();
+    let num_classes = request.data_set.num_classes();
     let testing_data = read_emnist_test(&data_path, num_classes);
 
+    let network_id = &request.network_id;
     let network = Network::from_file(format!("./resources/models/{network_id}"))?;
-    let profile = network.profile(tolerance, &testing_data)?;
+    let profile = network.profile(request.tolerance, &testing_data)?;
 
     Ok(Json::from(profile))
-}
-
-#[get("/profile/digit?<network_id>&<tolerance>&<data_set>&<digit>")]
-fn profile_digit(
-    network_id: &str,
-    tolerance: f32,
-    data_set: DataSet,
-    digit: usize,
-) -> Result<String, Error> {
-    Ok(format!(
-        "{:?}",
-        Network::from_file(format!("./resources/models/{network_id}"))?
-            .profile_digit(tolerance, data_set, digit)?
-    ))
 }
 
 #[post("/guess", data = "<request>")]
@@ -180,7 +163,6 @@ fn rocket() -> Rocket<Build> {
                 guess,
                 all_options,
                 profile,
-                profile_digit,
                 train_batches,
                 train_batches_plot,
                 test,

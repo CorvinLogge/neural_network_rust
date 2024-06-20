@@ -10,17 +10,23 @@ use crate::function::ActivationFunction::RELU;
 use crate::layer::LayerType::*;
 use crate::utils::Error;
 
-#[derive(Clone, Debug, Getters)]
+#[derive(Clone, Debug, Getters, Deserialize)]
 pub struct Layer {
-    weights: DMatrix<f32>,
-    weight_velocity: DMatrix<f32>,
-    weight_moment: DMatrix<f32>,
-    biases: DMatrix<f32>,
-    bias_velocity: DMatrix<f32>,
-    net: DMatrix<f32>,
-    outputs: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] weights: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] weight_velocity: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] weight_moment: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] biases: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] bias_velocity: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] net: DMatrix<f32>,
+    #[serde(skip, default = "default_matrix")] outputs: DMatrix<f32>,
+    ins: usize,
+    outs: usize,
     activation: ActivationFunction,
     layer_type: LayerType,
+}
+
+fn default_matrix() -> DMatrix<f32> {
+    DMatrix::<f32>::zeros(0, 0)
 }
 
 impl Default for Layer {
@@ -33,6 +39,8 @@ impl Default for Layer {
             bias_velocity: DMatrix::<f32>::zeros(0, 0),
             net: DMatrix::<f32>::zeros(0, 0),
             outputs: DMatrix::<f32>::zeros(0, 0),
+            ins: 0,
+            outs: 0,
             activation: RELU,
             layer_type: FullyConnected,
         }
@@ -40,37 +48,14 @@ impl Default for Layer {
 }
 
 impl Layer {
-    pub fn new(ins: usize, outs: usize, activation: ActivationFunction, layer_type: LayerType) -> Layer {
-        Layer {
-            weights: DMatrix::<f32>::from_fn(ins, outs, *activation.weight_initialization(ins)),
-            weight_velocity: DMatrix::<f32>::zeros(ins, outs),
-            weight_moment: DMatrix::<f32>::zeros(ins, outs),
-            biases: DMatrix::<f32>::from_fn(outs, 1, *activation.bias_initialization()),
-            bias_velocity: DMatrix::<f32>::zeros(outs, 1),
-            net: DMatrix::<f32>::zeros(outs, 1),
-            outputs: DMatrix::<f32>::zeros(outs, 1),
-            activation,
-            layer_type,
-        }
-    }
-
-    pub fn from_vec(layer_specs: &[usize], activation_functions: Vec<ActivationFunction>, layer_types: Vec<LayerType>) -> Vec<Layer> {
-        let mut layers: Vec<Layer> = Vec::new();
-
-        for index in 0..layer_specs.len() - 1 {
-            if index == layer_specs.len() - 2 {
-                layers.push(Layer::new(
-                    layer_specs[index],
-                    layer_specs[index + 1],
-                    activation_functions[index],
-                    layer_types[index],
-                ));
-            } else {
-                layers.push(Layer::new(layer_specs[index], layer_specs[index + 1], RELU, layer_types[index]));
-            }
-        }
-
-        layers
+    pub fn init(&mut self) {
+        self.weights = DMatrix::<f32>::from_fn(self.ins, self.outs, *self.activation.weight_initialization(self.ins));
+        self.weight_velocity = DMatrix::<f32>::zeros(self.ins, self.outs);
+        self.weight_moment = DMatrix::<f32>::zeros(self.ins, self.outs);
+        self.biases = DMatrix::<f32>::from_fn(self.outs, 1, *self.activation.bias_initialization());
+        self.bias_velocity = DMatrix::<f32>::zeros(self.outs, 1);
+        self.net = DMatrix::<f32>::zeros(self.outs, 1);
+        self.outputs = DMatrix::<f32>::zeros(self.outs, 1);
     }
 
     pub fn from(weights: DMatrix<f32>, biases: DMatrix<f32>, activation: ActivationFunction, layer_type: LayerType) -> Layer {
@@ -82,6 +67,8 @@ impl Layer {
             bias_velocity: DMatrix::<f32>::zeros(biases.nrows(), biases.ncols()),
             net: DMatrix::<f32>::zeros(weights.ncols(), 1),
             outputs: DMatrix::<f32>::zeros(weights.ncols(), 1),
+            ins: weights.nrows(),
+            outs: weights.ncols(),
             activation,
             layer_type,
         }
@@ -178,10 +165,10 @@ impl Layer {
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub enum LayerType {
-    FullyConnected = 0,
-    Convolutional = 1,
-    PassThrough = 2,
-    Dropout = 3,
+    #[serde(alias = "fc", alias = "fully_connected")] FullyConnected = 0,
+    #[serde(alias = "conv", alias = "convolutional")] Convolutional = 1,
+    #[serde(alias = "pass", alias = "pass_through")] PassThrough = 2,
+    #[serde(alias = "drop", alias = "dropout")] Dropout = 3,
 }
 
 impl LayerType {

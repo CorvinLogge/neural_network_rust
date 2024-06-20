@@ -10,8 +10,7 @@ use rocket::response::Responder;
 #[macro_export]
 macro_rules! debug_only {
     ($expr:expr) => {
-        
-        let debug;
+        let mut debug;
 
         unsafe { debug = DEBUG }
 

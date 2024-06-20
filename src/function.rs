@@ -4,8 +4,14 @@ use std::f32::consts::E;
 use nalgebra::DMatrix;
 use num_traits::Pow;
 use rand::{random, Rng, thread_rng};
+use rocket::http::Status;
 use rocket::serde::{Deserialize, Serialize};
+use rocket::shield::Feature::Accelerometer;
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use crate::layer::LayerType;
+use crate::layer::LayerType::{Convolutional, Dropout, FullyConnected, PassThrough};
+use crate::network::ActivationMode;
+use crate::utils::Error;
 
 const L_RELU: fn(f32) -> f32 = |x| if x >= 0f32 { x } else { 0.025 * x };
 const L_RELU_P: fn(f32) -> f32 = |x| if x < 0.0 { 0.025 } else { 1.0 };
@@ -35,18 +41,29 @@ pub fn equ(mat: &DMatrix<f32>) -> Box<dyn Fn(f32) -> f32> {
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum ErrorFunction {
-    MSE,
-    CrossEntropy,
-    L1,
-    L2
+    #[serde(alias = "mse")] MSE = 0,
+    #[serde(alias = "cross_entropy")] CrossEntropy = 1,
+    #[serde(alias = "l1")] L1 = 2,
+    #[serde(alias = "l2")] L2 = 3,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize_repr, Deserialize_repr)]
-#[repr(u8)]
+impl ErrorFunction {
+    pub fn from_u8(u: u8) -> Result<ErrorFunction, Error> {
+        match u {
+            0 => { Ok(ErrorFunction::MSE) }
+            1 => { Ok(ErrorFunction::CrossEntropy) }
+            2 => { Ok(ErrorFunction::L1) }
+            3 => { Ok(ErrorFunction::L2) }
+            _ => { Err(Error::new(format!("unknown variant '{}', expected one of '0', '1', '2', '3'", u), Status::BadRequest)) }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub enum ActivationFunction {
-    RELU = 0,
-    LRELU = 1,
-    SIGMOID = 2,
+    #[serde(alias = "relu")] RELU = 0,
+    #[serde(alias = "lrelu")] LRELU = 1,
+    #[serde(alias = "sigmoid")] SIGMOID = 2,
 }
 
 impl ActivationFunction {
@@ -79,6 +96,15 @@ impl ActivationFunction {
             ActivationFunction::RELU => { Box::new(RAND_0_1) }
             ActivationFunction::LRELU => { Box::new(ZERO) }
             ActivationFunction::SIGMOID => { Box::new(ZERO) }
+        }
+    }
+
+    pub fn from_u8(u: u8) -> Result<ActivationFunction, Error> {
+        match u {
+            0 => { Ok(ActivationFunction::RELU) }
+            1 => { Ok(ActivationFunction::LRELU) }
+            2 => { Ok(ActivationFunction::SIGMOID) }
+            _ => { Err(Error::new(format!("unknown variant '{}', expected one of '0', '1', '2'", u), Status::BadRequest)) }
         }
     }
 }

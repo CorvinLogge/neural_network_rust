@@ -2,9 +2,11 @@ use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
+use std::ops::Not;
 use std::path::Path;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
+use conv::ConvUtil;
 use indicatif::ProgressIterator;
 use nalgebra::{DMatrix, Dyn, U1, VecStorage, Vector};
 use num_traits::Pow;
@@ -21,70 +23,21 @@ use crate::layer::{column_mean, expand_columns, Layer, LayerType, row_mean};
 use crate::layer::LayerType::PassThrough;
 use crate::optimizers::Optimizer;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Network {
-    pub(crate) layers: Vec<Layer>,
-    layer_specs: Vec<usize>,
+    layers: Vec<Layer>,
     lr: f32,
+    #[serde(skip)]
     id: String,
     error: ErrorFunction,
     optimizer: Optimizer,
+    data_set: DataSet,
 }
 
 impl Network {
-    pub(crate) fn new(
-        layer_specs: &[usize],
-        lr: f32,
-        activation: ActivationFunction,
-        error: ErrorFunction,
-        layer_types: Vec<LayerType>,
-        optimizer: Optimizer,
-    ) -> Result<Network, utils::Error> {
-        let layers = Layer::from_vec(layer_specs, vec![activation; layer_specs.len() - 1], layer_types);
-
-        Ok(Network {
-            layers,
-            layer_specs: layer_specs.to_vec(),
-            lr,
-            id: chrono::offset::Local::now()
-                .format(NET_ID_PATTERN)
-                .to_string(),
-            optimizer,
-            error,
-        })
-    }
-
-    pub fn relu_sig(layer_specs: &[usize], lr: f32, error: ErrorFunction, layer_types: Vec<LayerType>, optimizer: Optimizer) -> Result<Network, utils::Error> {
-        let mut activation_functions = vec![RELU; layer_specs.len() - 2];
-        activation_functions.push(SIGMOID);
-
-        let mut layers: Vec<Layer> = Layer::from_vec(layer_specs, activation_functions, layer_types);
-
-        Ok(Network {
-            layers,
-            layer_specs: layer_specs.to_vec(),
-            lr,
-            id: chrono::offset::Local::now()
-                .format(NET_ID_PATTERN)
-                .to_string(),
-            error,
-            optimizer,
-        })
-    }
-
-    pub fn with_mode(
-        layer_specs: &[usize],
-        lr: f32,
-        error: ErrorFunction,
-        activation_mode: ActivationMode,
-        layer_types: Vec<LayerType>,
-        optimizer: Optimizer,
-    ) -> Result<Network, utils::Error> {
-        match activation_mode {
-            ActivationMode::sigmoid => Ok(Network::new(layer_specs, lr, SIGMOID, error, layer_types, optimizer)?),
-            ActivationMode::relu => Ok(Network::new(layer_specs, lr, RELU, error, layer_types, optimizer)?),
-            ActivationMode::relu_sig => Ok(Network::relu_sig(layer_specs, lr, error, layer_types, optimizer)?),
-        }
+    pub fn init(&mut self) {
+        self.layers.iter_mut().for_each(|mut layer| layer.init());
+        self.id = chrono::offset::Local::now().format(NET_ID_PATTERN).to_string();
     }
 
     pub(crate) fn feedforward(&mut self, mut inputs: DMatrix<f32>) -> DMatrix<f32> {
@@ -101,8 +54,6 @@ impl Network {
         for layer in &self.layers {
             out = layer.guess(out);
         }
-
-        out = out.map(equ(&out));
 
         return out;
     }
@@ -165,11 +116,6 @@ impl Network {
                     .component_mul(&prime_activated_net)
                     .cast();
 
-
-                if t == 34 {
-                    println!("{}", error);
-                }
-
                 bias_gradient = column_mean(error.clone());
 
                 weight_gradient = self.layers.get(index - 1).ok_or(utils::Error::back_prop())?.outputs() * error.transpose();
@@ -195,11 +141,11 @@ impl Network {
             let weight_moment = layer.weight_moment();
 
             match self.optimizer {
-                Optimizer::sgd => {
+                Optimizer::Sgd => {
                     delta_weights = weight_gradient;
                     delta_bias = bias_gradient;
                 }
-                Optimizer::sgd_m => {
+                Optimizer::SgdM => {
                     let new_weight_velocity = beta_1 * weight_velocity + (1.0 - beta_1) * weight_gradient;
                     let new_bias_velocity = beta_1 * bias_velocity + (1.0 - beta_1) * bias_gradient;
 
@@ -209,7 +155,7 @@ impl Network {
                     delta_weights = new_weight_velocity;
                     delta_bias = new_bias_velocity;
                 }
-                Optimizer::rms_prop => {
+                Optimizer::RmsProp => {
                     let weight_gradient_squared: DMatrix<f32> = weight_gradient.component_mul(&weight_gradient);
                     let mut new_weight_velocity = beta_1 * weight_velocity + (1.0 - beta_1) * &weight_gradient_squared;
                     new_weight_velocity.apply(|val| *val = val.sqrt() + 10e-8);
@@ -219,7 +165,7 @@ impl Network {
 
                     layer.set_weight_velocity(&new_weight_velocity);
                 }
-                Optimizer::adam => {
+                Optimizer::Adam => {
                     let new_weight_moment = beta_1 * weight_moment + (1.0 - beta_1) * &weight_gradient;
                     let new_weight_moment_hat = new_weight_moment.scale(1.0 / (1.0 - beta_1.pow(t as u16)));
 
@@ -248,12 +194,11 @@ impl Network {
 
     pub fn train_batches(
         &mut self,
-        data_set: DataSet,
         epochs: usize,
         batch_size: usize,
     ) -> Result<(), utils::Error> {
-        let data_path = data_set.path();
-        let num_classes = data_set.num_classes();
+        let data_path = self.data_set.path();
+        let num_classes = self.data_set.num_classes();
 
         let mut train_data = read_emnist_train(&data_path, num_classes);
         let test_data = read_emnist_test(&data_path, num_classes);
@@ -277,12 +222,11 @@ impl Network {
 
     pub fn train_batches_plot(
         &mut self,
-        data_set: DataSet,
         epochs: usize,
         batch_size: usize,
     ) -> Result<Vec<(f32, f32)>, utils::Error> {
-        let data_path = data_set.path();
-        let num_classes = data_set.num_classes();
+        let data_path = self.data_set.path();
+        let num_classes = self.data_set.num_classes();
 
         let mut plot_points: Vec<(f32, f32)> = Vec::with_capacity(epochs);
 
@@ -448,7 +392,7 @@ impl Network {
                 DMatrix::<f32>::from_vec(num_ins as usize, num_outs as usize, weight_data);
             let biases = DMatrix::<f32>::from_vec(num_outs as usize, 1, bias_data);
 
-            let activation: ActivationFunction = serde_json::from_slice(network_bytes.drain(..1).collect::<Vec<u8>>().as_slice())?;
+            let activation: ActivationFunction = ActivationFunction::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().as_slice().first().unwrap())?;
 
             let layer_type = LayerType::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(PassThrough as u8)))?;
 
@@ -459,11 +403,14 @@ impl Network {
             network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
         );
 
-        let optimizer: Optimizer = Optimizer::from(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(Optimizer::adam as u8)))?;
+        let error: ErrorFunction = ErrorFunction::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(ErrorFunction::MSE as u8)))?;
+
+        let optimizer: Optimizer = Optimizer::from(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(Optimizer::Adam as u8)))?;
+
+        let data_set: DataSet = DataSet::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(DataSet::MnistDigits as u8)))?;
 
         Ok(Network {
             layers,
-            layer_specs: layer_specs.iter().map(move |x| *x as usize).collect(),
             lr,
             id: Path::new(file_path.as_str())
                 .file_name()
@@ -471,21 +418,38 @@ impl Network {
                 .to_str()
                 .unwrap()
                 .to_string(),
-            error: MSE,
+            error,
+            data_set,
             optimizer,
         })
     }
 
-    // File Format:
-    // First 4 Bytes -> number of layers + 1 as u32
-    // Next 4 * (number of layers + 1) Bytes -> number of inputs/outputs to layer
-    // Next (inputs * outputs) Bytes -> Weights of first layer
-    // Next (outputs * 1) Bytes -> Biases of first layer
-    // Next byte is a u8 that deserializes to an ActivationFunction
-    // Next byte is a u8 that deserializes to an ActivationFunction
-    // Repeat for all layers
-    // Next 4 Bytes -> learn rate as f32
-    // Next byte is a u8 that deserializes to an Optimizer
+    /// Saves the entire network to a file in a custom format (for now)
+    ///
+    /// File Format:
+    ///
+    /// First 4 Bytes -> number of layers + 1 as u32
+    ///
+    /// Next 4 * (number of layers + 1) Bytes -> number of inp
+    ///
+    /// Next (inputs * outputs) Bytes -> Weights of first laye
+    ///
+    /// Next (outputs * 1) Bytes -> Biases of first layer
+    ///
+    /// Next byte is a u8 that deserializes to an ActivationFu
+    ///
+    /// Next byte is a u8 that deserializes to an ActivationFu
+    ///
+    /// Repeat for all layers
+    ///
+    /// Next 4 Bytes -> learn rate as f32
+    ///
+    /// Next byte is a u8 that deserializes to an Error Function
+    ///
+    /// Next byte is a u8 that deserializes to an Optimizer
+    ///
+    /// Next byte is a u8 that deserializes to a DataSet
+    ///
     pub fn save_to_path(&self, dir_path: &str) -> Result<String, utils::Error> {
         let folder_path_string = format!("{dir_path}/{}", self.id);
         let folder_path = Path::new(folder_path_string.as_str());
@@ -496,10 +460,17 @@ impl Network {
 
         let mut network_file = File::create(network_path)?;
 
-        network_file
-            .write_u32::<BigEndian>(self.layer_specs.len() as u32)?;
+        let mut v = vec![0; self.layers.len() + 1];
+        let mut layer_specs = v.as_mut_slice();
 
-        for spec in &self.layer_specs {
+        for (index, layer) in self.layers.iter().enumerate() {
+            layer_specs[index] = *layer.ins();
+            layer_specs[index + 1] = *layer.outs();
+        }
+
+        network_file.write_u32::<BigEndian>(layer_specs.len() as u32)?;
+
+        for spec in layer_specs {
             network_file.write_u32::<BigEndian>(*spec as u32)?;
         }
 
@@ -512,8 +483,7 @@ impl Network {
                 network_file.write_f32::<BigEndian>(*value)?
             }
 
-            let activation = serde_json::to_string(&layer.activation())?;
-            network_file.write_all(activation.as_bytes())?;
+            network_file.write_u8(*layer.activation() as u8)?;
 
             let layer_type = *layer.layer_type() as u8;
             network_file.write_u8(layer_type)?;
@@ -521,7 +491,11 @@ impl Network {
 
         network_file.write_f32::<BigEndian>(self.lr)?;
 
+        network_file.write_u8(self.error as u8)?;
+
         network_file.write_u8(self.optimizer as u8)?;
+
+        network_file.write_u8(self.data_set as u8)?;
 
         Ok(self.id.clone())
     }
@@ -587,7 +561,7 @@ impl ProfileResult {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum ActivationMode {
-    sigmoid,
-    relu,
-    relu_sig,
+    #[serde(alias = "sigmoid")] Sigmoid,
+    #[serde(alias = "relu")] Relu,
+    #[serde(alias = "relu_sig")] ReluSig,
 }

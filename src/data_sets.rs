@@ -6,7 +6,12 @@ use std::ops::Range;
 use image::{ImageBuffer, Rgb};
 use num_integer::Roots;
 use rocket::form::validate::Len;
+use rocket::http::Status;
 use serde::{Deserialize, Serialize};
+use crate::data_sets::DataSet::*;
+use crate::layer::LayerType;
+use crate::layer::LayerType::{Convolutional, Dropout, FullyConnected, PassThrough};
+use crate::utils::Error;
 
 #[derive(Clone)]
 pub(crate) struct DataPoint {
@@ -17,31 +22,48 @@ pub(crate) struct DataPoint {
 #[derive(Serialize, Deserialize, FromFormField, Debug, Copy, Clone)]
 #[serde(crate = "rocket::serde")]
 pub enum DataSet {
-    mnist_digits,
-    emnist_digits,
-    emnist_letters,
-    emnist_byclass,
-    emnist_balanced,
+    #[serde(alias = "mnist_digits")] MnistDigits = 0,
+    #[serde(alias = "emnist_digits")] EMnistDigits = 1,
+    #[serde(alias = "emnist_letters")] EMnistLetters = 2,
+    #[serde(alias = "emnist_byclass")] EMnistByClass = 3,
+    #[serde(alias = "emnist_balanced")] EMnistBalanced = 4,
 }
 
 impl DataSet {
     pub fn path(&self) -> String {
         match self {
-            DataSet::mnist_digits => "./resources/mnist/".to_string(),
-            DataSet::emnist_digits => "./resources/emnist_digits/".to_string(),
-            DataSet::emnist_letters => "./resources/emnist_letters/".to_string(),
-            DataSet::emnist_byclass => "./resources/emnist_byclass/".to_string(),
-            DataSet::emnist_balanced => "./resources/emnist_balanced/".to_string(),
+            MnistDigits => "./resources/mnist/".to_string(),
+            EMnistDigits => "./resources/emnist_digits/".to_string(),
+            EMnistLetters => "./resources/emnist_letters/".to_string(),
+            EMnistByClass => "./resources/emnist_byclass/".to_string(),
+            EMnistBalanced => "./resources/emnist_balanced/".to_string(),
         }
     }
 
     pub fn num_classes(&self) -> usize {
         match self {
-            DataSet::mnist_digits => 10,
-            DataSet::emnist_digits => 10,
-            DataSet::emnist_letters => 37,
-            DataSet::emnist_byclass => 62,
-            DataSet::emnist_balanced => 47,
+            MnistDigits => 10,
+            EMnistDigits => 10,
+            EMnistLetters => 37,
+            EMnistByClass => 62,
+            EMnistBalanced => 47,
+        }
+    }
+
+    pub fn num_inputs(&self) -> usize {
+        match self {
+            _ => 784
+        }
+    }
+
+    pub fn from_u8(u: u8) -> Result<DataSet, Error> {
+        match u {
+            0 => { Ok(MnistDigits) }
+            1 => { Ok(EMnistDigits) }
+            2 => { Ok(EMnistLetters) }
+            3 => { Ok(EMnistByClass) }
+            4 => { Ok(EMnistBalanced) }
+            _ => { Err(Error::new(format!("unknown variant '{}', expected one of '0', '1', '2', '3', '4'", u), Status::BadRequest)) }
         }
     }
 }
