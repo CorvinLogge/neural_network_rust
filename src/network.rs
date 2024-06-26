@@ -6,7 +6,6 @@ use std::ops::Not;
 use std::path::Path;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use conv::ConvUtil;
 use indicatif::ProgressIterator;
 use nalgebra::{DMatrix, Dyn, U1, VecStorage, Vector};
 use num_traits::Pow;

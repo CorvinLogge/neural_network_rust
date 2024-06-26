@@ -3,8 +3,6 @@ use std::collections::VecDeque;
 use std::ops::Add;
 use std::ops::Deref;
 
-use base64::Engine;
-use base64::prelude::BASE64_STANDARD;
 use image::{ImageBuffer, Rgb};
 use image::imageops::FilterType;
 use regex::Regex;
