@@ -6,31 +6,31 @@ extern crate rocket;
 use std::string::ToString;
 
 use image::{ImageBuffer, Rgb};
-use rocket::{Build, Request, Response, Rocket};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::{Header, Status};
 use rocket::serde::json::Json;
+use rocket::{Build, Request, Response, Rocket};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::data_sets::{DataSet, read_emnist_test};
-use crate::function::ActivationFunction::{SIGMOID};
+use crate::data_sets::{read_emnist_test, DataSet};
+use crate::function::ActivationFunction::SIGMOID;
 use crate::function::ErrorFunction;
 use crate::image_processor::ImageProcessor;
-use crate::layer::{Layer, LayerType};
+use crate::layer::Layer;
 use crate::network::{ActivationMode, Network, ProfileResult};
 use crate::optimizers::Optimizer;
 use crate::plotter::file_plot;
 use crate::utils::Error;
 
-mod utils;
 mod data_sets;
 mod function;
 mod image_processor;
-mod network;
-mod plotter;
-mod optimizers;
 mod layer;
+mod network;
+mod optimizers;
+mod plotter;
+mod utils;
 
 static mut DEBUG: bool = false;
 static NET_ID_PATTERN: &str = "%Y%m%d%H%M%S";
@@ -91,8 +91,9 @@ fn train_batches_plot(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error
     let image: ImageBuffer<Rgb<u8>, Vec<u8>> =
         ImageBuffer::from_vec(plot_w as u32, plot_h as u32, plot_buffer).ok_or(Error::new(
             "Failed to save plot".to_string(),
-            Status::new(500),
+            Status::InternalServerError,
         ))?;
+
     image.save(format!("./resources/models/{id}/plot.png"))?;
 
     Ok(Json::from(json!(
@@ -174,7 +175,6 @@ fn rocket() -> Rocket<Build> {
 
     rocket.mount("/network", routes).attach(CORS)
 }
-
 
 pub struct CORS;
 

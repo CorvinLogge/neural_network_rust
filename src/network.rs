@@ -7,20 +7,20 @@ use std::path::Path;
 
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use indicatif::ProgressIterator;
-use nalgebra::{DMatrix, Dyn, U1, VecStorage, Vector};
-use num_traits::Pow;
+use nalgebra::{DMatrix, Dyn, VecStorage, Vector, U1};
+use num_traits::{Float, Pow};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rocket::serde::{Deserialize, Serialize};
 
-use crate::{NET_ID_PATTERN, utils};
-use crate::data_sets::{DataPoint, DataSet, read_emnist_test, read_emnist_train};
-use crate::function::{ActivationFunction, equ, ErrorFunction};
+use crate::data_sets::{read_emnist_test, read_emnist_train, DataPoint, DataSet};
 use crate::function::ActivationFunction::{RELU, SIGMOID};
 use crate::function::ErrorFunction::*;
-use crate::layer::{column_mean, expand_columns, Layer, LayerType, row_mean};
-use crate::layer::LayerType::PassThrough;
+use crate::function::{equ, ActivationFunction, ErrorFunction};
+use crate::layer::{column_mean, expand_columns, row_mean, Layer};
 use crate::optimizers::Optimizer;
+use crate::DEBUG;
+use crate::{debug_only, utils, NET_ID_PATTERN};
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Network {
@@ -36,7 +36,9 @@ pub(crate) struct Network {
 impl Network {
     pub fn init(&mut self) {
         self.layers.iter_mut().for_each(|mut layer| layer.init());
-        self.id = chrono::offset::Local::now().format(NET_ID_PATTERN).to_string();
+        self.id = chrono::offset::Local::now()
+            .format(NET_ID_PATTERN)
+            .to_string();
     }
 
     pub(crate) fn feedforward(&mut self, mut inputs: DMatrix<f32>) -> DMatrix<f32> {
@@ -57,7 +59,13 @@ impl Network {
         return out;
     }
 
-    pub(crate) fn backpropagation_batches(&mut self, batch: &[DataPoint], beta_1: f32, beta_2: f32, t: usize) -> Result<(), utils::Error> {
+    pub(crate) fn backpropagation_batches(
+        &mut self,
+        batch: &[DataPoint],
+        beta_1: f32,
+        beta_2: f32,
+        t: usize,
+    ) -> Result<(), utils::Error> {
         let (inputs, targets) = combine_batch(batch);
 
         let mut error: DMatrix<f32> = DMatrix::<f32>::zeros(0, 0);
@@ -65,11 +73,18 @@ impl Network {
         let outputs: DMatrix<f32> = self.feedforward(inputs.clone());
 
         for index in (0..self.layers.len()).rev() {
-            let prime_activated_net = self.layers.get(index).ok_or(utils::Error::back_prop())?.net().map(
-                self.layers.get(index).ok_or(utils::Error::back_prop())?
-                    .activation()
-                    .derivative(),
-            );
+            let activation_derivative = self
+                .layers
+                .get(index)
+                .ok_or(utils::Error::back_prop())?
+                .activation()
+                .derivative();
+            let net = self
+                .layers
+                .get(index)
+                .ok_or(utils::Error::back_prop())?
+                .net();
+            let prime_activated_net = net.map(activation_derivative);
 
             let mut bias_gradient: DMatrix<f32>;
             let mut weight_gradient: DMatrix<f32>;
@@ -79,10 +94,13 @@ impl Network {
             //Only output layer
             if index == self.layers.len() - 1 {
                 let loss_derivative = match self.error {
-                    MSE => { &outputs - &targets }
+                    MSE => &outputs - &targets,
                     CrossEntropy => {
                         let left = targets.clone().component_div(&outputs.clone());
-                        let right = targets.clone().map(move |v| 1f32 - v).component_div(&outputs.clone().map(move |v| 1f32 - v));
+                        let right = targets
+                            .clone()
+                            .map(move |v| 1f32 - v)
+                            .component_div(&outputs.clone().map(move |v| 1f32 - v));
 
                         right - left
                     }
@@ -93,33 +111,46 @@ impl Network {
                         let row_mean = row_mean(norm_weights);
                         let expanded_columns = expand_columns(outputs.ncols(), &row_mean);
 
-                        let error = &outputs - &targets + (1.0 / batch.len() as f32) * expanded_columns;
+                        let error =
+                            &outputs - &targets + (1.0 / batch.len() as f32) * expanded_columns;
 
                         error
                     }
                     L2 => {
                         let weights = self.layers.last().unwrap().weights().clone();
-                        let abs_sum = weights.clone().apply_into(|val| *val = val.pow(2)).sum().sqrt();
+                        let abs_sum = weights
+                            .clone()
+                            .apply_into(|val| *val = val.pow(2))
+                            .sum()
+                            .sqrt();
                         let norm_weights = (1.0 / abs_sum) * &weights;
                         let row_mean = row_mean(norm_weights);
                         let expanded_columns = expand_columns(outputs.ncols(), &row_mean);
 
-                        let error = &outputs - &targets + (1.0 / batch.len() as f32) * expanded_columns;
+                        let error =
+                            &outputs - &targets + (1.0 / batch.len() as f32) * expanded_columns;
 
                         error
                     }
                 };
 
-                error = loss_derivative
-                    .clone()
-                    .component_mul(&prime_activated_net)
-                    .cast();
+                error = loss_derivative.component_mul(&prime_activated_net).cast();
 
                 bias_gradient = column_mean(error.clone());
 
-                weight_gradient = self.layers.get(index - 1).ok_or(utils::Error::back_prop())?.outputs() * error.transpose();
+                weight_gradient = self
+                    .layers
+                    .get(index - 1)
+                    .ok_or(utils::Error::back_prop())?
+                    .outputs()
+                    * error.transpose();
             } else {
-                let left_side: DMatrix<f32> = self.layers.get(index + 1).ok_or(utils::Error::back_prop())?.weights() * &error;
+                let left_side: DMatrix<f32> = self
+                    .layers
+                    .get(index + 1)
+                    .ok_or(utils::Error::back_prop())?
+                    .weights()
+                    * &error;
 
                 error = left_side.component_mul(&prime_activated_net);
 
@@ -128,11 +159,19 @@ impl Network {
                 if index == 0 {
                     weight_gradient = inputs.clone() * error.transpose();
                 } else {
-                    weight_gradient = self.layers.get(index - 1).ok_or(utils::Error::back_prop())?.outputs() * error.transpose();
+                    weight_gradient = self
+                        .layers
+                        .get(index - 1)
+                        .ok_or(utils::Error::back_prop())?
+                        .outputs()
+                        * error.transpose();
                 }
             }
 
-            let layer = self.layers.get_mut(index).ok_or(utils::Error::back_prop())?;
+            let layer = self
+                .layers
+                .get_mut(index)
+                .ok_or(utils::Error::back_prop())?;
 
             let weight_velocity = layer.weight_velocity();
             let bias_velocity = layer.bias_velocity();
@@ -145,7 +184,8 @@ impl Network {
                     delta_bias = bias_gradient;
                 }
                 Optimizer::SgdM => {
-                    let new_weight_velocity = beta_1 * weight_velocity + (1.0 - beta_1) * weight_gradient;
+                    let new_weight_velocity =
+                        beta_1 * weight_velocity + (1.0 - beta_1) * weight_gradient;
                     let new_bias_velocity = beta_1 * bias_velocity + (1.0 - beta_1) * bias_gradient;
 
                     layer.set_weight_velocity(&new_weight_velocity);
@@ -155,8 +195,10 @@ impl Network {
                     delta_bias = new_bias_velocity;
                 }
                 Optimizer::RmsProp => {
-                    let weight_gradient_squared: DMatrix<f32> = weight_gradient.component_mul(&weight_gradient);
-                    let mut new_weight_velocity = beta_1 * weight_velocity + (1.0 - beta_1) * &weight_gradient_squared;
+                    let weight_gradient_squared: DMatrix<f32> =
+                        weight_gradient.component_mul(&weight_gradient);
+                    let mut new_weight_velocity =
+                        beta_1 * weight_velocity + (1.0 - beta_1) * &weight_gradient_squared;
                     new_weight_velocity.apply(|val| *val = val.sqrt() + 10e-8);
 
                     delta_weights = weight_gradient.component_div(&new_weight_velocity);
@@ -165,12 +207,17 @@ impl Network {
                     layer.set_weight_velocity(&new_weight_velocity);
                 }
                 Optimizer::Adam => {
-                    let new_weight_moment = beta_1 * weight_moment + (1.0 - beta_1) * &weight_gradient;
-                    let new_weight_moment_hat = new_weight_moment.scale(1.0 / (1.0 - beta_1.pow(t as u16)));
+                    let new_weight_moment =
+                        beta_1 * weight_moment + (1.0 - beta_1) * &weight_gradient;
+                    let new_weight_moment_hat =
+                        new_weight_moment.scale(1.0 / (1.0 - beta_1.pow(t as f32)));
 
-                    let weight_gradient_squared: DMatrix<f32> = weight_gradient.component_mul(&weight_gradient);
-                    let new_weight_velocity = beta_2 * weight_velocity + (1.0 - beta_2) * &weight_gradient_squared;
-                    let mut new_weight_velocity_hat = new_weight_velocity.scale(1.0 / (1.0 - beta_2.pow(t as u16)));
+                    let weight_gradient_squared: DMatrix<f32> =
+                        weight_gradient.component_mul(&weight_gradient);
+                    let new_weight_velocity =
+                        beta_2 * weight_velocity + (1.0 - beta_2) * &weight_gradient_squared;
+                    let mut new_weight_velocity_hat =
+                        new_weight_velocity.scale(1.0 / (1.0 - beta_2.pow(t as f32)));
                     new_weight_velocity_hat.apply(|val| *val = val.sqrt() + 10e-8);
 
                     delta_weights = new_weight_moment_hat.component_div(&new_weight_velocity_hat);
@@ -191,30 +238,8 @@ impl Network {
         Ok(())
     }
 
-    pub fn train_batches(
-        &mut self,
-        epochs: usize,
-        batch_size: usize,
-    ) -> Result<(), utils::Error> {
-        let data_path = self.data_set.path();
-        let num_classes = self.data_set.num_classes();
-
-        let mut train_data = read_emnist_train(&data_path, num_classes);
-        let test_data = read_emnist_test(&data_path, num_classes);
-
-        train_data.shuffle(&mut thread_rng());
-
-        for epoch in (0..epochs).progress() {
-            let batches = train_data.chunks(batch_size);
-
-            for (t, batch) in batches.enumerate() {
-                if batch.len() == batch_size {
-                    self.backpropagation_batches(batch, 0.9 / batch_size as f32, 0.99 / batch_size as f32, t)?
-                }
-            }
-
-            println!("{}", self.profile_str(0.95, &test_data)?);
-        }
+    pub fn train_batches(&mut self, epochs: usize, batch_size: usize) -> Result<(), utils::Error> {
+        self.train_batches_plot(epochs, batch_size)?;
 
         Ok(())
     }
@@ -242,7 +267,12 @@ impl Network {
             for batch in batches {
                 if batch.len() == batch_size {
                     t += 1;
-                    self.backpropagation_batches(batch, 0.9 / batch_size as f32, 0.99 / batch_size as f32, t)?
+                    self.backpropagation_batches(
+                        batch,
+                        0.9 / batch_size as f32,
+                        0.99 / batch_size as f32,
+                        t,
+                    )?
                 }
             }
 
@@ -253,48 +283,6 @@ impl Network {
         }
 
         Ok(plot_points)
-    }
-
-    pub fn profile_digit(
-        &self,
-        tolerance: f32,
-        data_set: DataSet,
-        number: usize,
-    ) -> Result<ProfileResult, utils::Error> {
-        let data_path = data_set.path();
-        let num_classes = data_set.num_classes();
-
-        let full = read_emnist_test(&data_path, num_classes);
-        let testing_data = full
-            .iter()
-            .filter(|dp| *dp.target.get(number).unwrap() == 1.0)
-            .collect::<Vec<&DataPoint>>();
-
-        let mut successes = 0;
-        let mut fails = 0;
-
-        for data_point in testing_data.iter() {
-            let mut out = self.guess(&data_point.input);
-
-            let expected =
-                DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
-
-            let ex_index = expected.iter().position(|x| *x == 1.0).ok_or(utils::Error::profile())?;
-
-            if out.get(ex_index).ok_or(utils::Error::profile())? > &tolerance {
-                successes += 1;
-            } else {
-                fails += 1;
-            }
-        }
-
-        Ok(ProfileResult::new(
-            self.id.clone(),
-            tolerance,
-            successes,
-            fails,
-            successes as f32 / testing_data.len() as f32,
-        ))
     }
 
     pub fn profile(
@@ -308,9 +296,13 @@ impl Network {
         for data_point in testing_data.iter() {
             let mut out = self.guess(&data_point.input);
 
-            let expected = DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
+            let expected =
+                DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
 
-            let ex_index = expected.iter().position(|x| *x == 1.0).ok_or(utils::Error::profile())?;
+            let ex_index = expected
+                .iter()
+                .position(|x| *x == 1.0)
+                .ok_or(utils::Error::profile())?;
 
             if out.get(ex_index).ok_or(utils::Error::profile())? > &tolerance {
                 successes += 1;
@@ -327,8 +319,6 @@ impl Network {
             successes as f32 / testing_data.len() as f32,
         ))
     }
-
-    fn profile_dp(data_point: &DataPoint) {}
 
     pub fn profile_str(
         &self,
@@ -391,22 +381,45 @@ impl Network {
                 DMatrix::<f32>::from_vec(num_ins as usize, num_outs as usize, weight_data);
             let biases = DMatrix::<f32>::from_vec(num_outs as usize, 1, bias_data);
 
-            let activation: ActivationFunction = ActivationFunction::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().as_slice().first().unwrap())?;
+            let activation: ActivationFunction = ActivationFunction::from_u8(
+                *network_bytes
+                    .drain(..1)
+                    .collect::<Vec<u8>>()
+                    .as_slice()
+                    .first()
+                    .unwrap(),
+            )?;
 
-            let layer_type = LayerType::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(PassThrough as u8)))?;
-
-            layers.push(Layer::from(weights, biases, activation, layer_type));
+            layers.push(Layer::from(weights, biases, activation));
         }
 
         let lr = byteorder::BigEndian::read_f32(
             network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
         );
 
-        let error: ErrorFunction = ErrorFunction::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(ErrorFunction::MSE as u8)))?;
+        let error: ErrorFunction = ErrorFunction::from_u8(
+            *network_bytes
+                .drain(..1)
+                .collect::<Vec<u8>>()
+                .first()
+                .unwrap_or(&(ErrorFunction::MSE as u8)),
+        )?;
 
-        let optimizer: Optimizer = Optimizer::from(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(Optimizer::Adam as u8)))?;
+        let optimizer: Optimizer = Optimizer::from(
+            *network_bytes
+                .drain(..1)
+                .collect::<Vec<u8>>()
+                .first()
+                .unwrap_or(&(Optimizer::Adam as u8)),
+        )?;
 
-        let data_set: DataSet = DataSet::from_u8(*network_bytes.drain(..1).collect::<Vec<u8>>().first().unwrap_or(&(DataSet::MnistDigits as u8)))?;
+        let data_set: DataSet = DataSet::from_u8(
+            *network_bytes
+                .drain(..1)
+                .collect::<Vec<u8>>()
+                .first()
+                .unwrap_or(&(DataSet::MnistDigits as u8)),
+        )?;
 
         Ok(Network {
             layers,
@@ -431,13 +444,11 @@ impl Network {
     ///
     /// Next 4 * (number of layers + 1) Bytes -> number of inp
     ///
-    /// Next (inputs * outputs) Bytes -> Weights of first laye
+    /// Next (inputs * outputs) Bytes -> Weights of first layer
     ///
     /// Next (outputs * 1) Bytes -> Biases of first layer
     ///
-    /// Next byte is a u8 that deserializes to an ActivationFu
-    ///
-    /// Next byte is a u8 that deserializes to an ActivationFu
+    /// Next byte is a u8 that deserializes to an ActivationFunction
     ///
     /// Repeat for all layers
     ///
@@ -483,9 +494,6 @@ impl Network {
             }
 
             network_file.write_u8(*layer.activation() as u8)?;
-
-            let layer_type = *layer.layer_type() as u8;
-            network_file.write_u8(layer_type)?;
         }
 
         network_file.write_f32::<BigEndian>(self.lr)?;
@@ -515,14 +523,14 @@ fn combine_batch(batch: &[DataPoint]) -> (DMatrix<f32>, DMatrix<f32>) {
         let input = Vector::from_vec_storage(VecStorage::new(
             Dyn(len_inputs),
             U1,
-            data_point.input.clone(),
+            data_point.input.clone(), // todo: optimize cloning
         ));
         inputs.set_column(index, &input);
 
         let input = Vector::from_vec_storage(VecStorage::new(
             Dyn(len_target),
             U1,
-            data_point.target.clone(),
+            data_point.target.clone(), // todo: optimize cloning
         ));
         targets.set_column(index, &input);
     }
@@ -560,7 +568,11 @@ impl ProfileResult {
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 pub enum ActivationMode {
-    #[serde(alias = "sigmoid")] Sigmoid,
-    #[serde(alias = "relu")] Relu,
-    #[serde(alias = "relu_sig")] ReluSig,
+    #[serde(alias = "sigmoid")]
+    Sigmoid,
+    #[serde(alias = "relu")]
+    Relu,
+    #[serde(alias = "relu_sig")]
+    ReluSig,
 }
+

@@ -3,9 +3,9 @@ use std::io::Cursor;
 use std::num::ParseIntError;
 
 use image::ImageError;
-use rocket::{Request, Response};
 use rocket::http::{ContentType, Status};
 use rocket::response::Responder;
+use rocket::{Request, Response};
 
 #[macro_export]
 macro_rules! debug_only {
@@ -38,10 +38,7 @@ pub(crate) struct Error {
 
 impl Error {
     pub fn new(message: String, status: Status) -> Error {
-        Error {
-            message,
-            status,
-        }
+        Error { message, status }
     }
 
     pub fn back_prop() -> Error {

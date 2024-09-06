@@ -6,14 +6,10 @@ use crate::utils::Error;
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
 pub enum Optimizer {
-    #[serde(alias = "sgd")]
-    Sgd = 0,
-    #[serde(alias = "sgdm")]
-    SgdM = 1,
-    #[serde(alias = "rms_prop")]
-    RmsProp = 2,
-    #[serde(alias = "adam")]
-    Adam = 3,
+    #[serde(alias = "sgd")] Sgd = 0,
+    #[serde(alias = "sgdm")] SgdM = 1,
+    #[serde(alias = "rms_prop")] RmsProp = 2,
+    #[serde(alias = "adam")] Adam = 3,
 }
 
 impl Optimizer {

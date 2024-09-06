@@ -7,8 +7,6 @@ use rand::{random, Rng, thread_rng};
 use rocket::http::Status;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::shield::Feature::Accelerometer;
-use crate::layer::LayerType;
-use crate::layer::LayerType::{Convolutional, Dropout, FullyConnected, PassThrough};
 use crate::network::ActivationMode;
 use crate::utils::Error;
 

@@ -7,7 +7,6 @@ use rocket::serde::{Deserialize, Serialize};
 
 use crate::function::ActivationFunction;
 use crate::function::ActivationFunction::RELU;
-use crate::layer::LayerType::*;
 use crate::utils::Error;
 
 #[derive(Clone, Debug, Getters, Deserialize)]
@@ -22,7 +21,6 @@ pub struct Layer {
     ins: usize,
     outs: usize,
     activation: ActivationFunction,
-    layer_type: LayerType,
 }
 
 fn default_matrix() -> DMatrix<f32> {
@@ -42,7 +40,6 @@ impl Default for Layer {
             ins: 0,
             outs: 0,
             activation: RELU,
-            layer_type: FullyConnected,
         }
     }
 }
@@ -58,7 +55,7 @@ impl Layer {
         self.outputs = DMatrix::<f32>::zeros(self.outs, 1);
     }
 
-    pub fn from(weights: DMatrix<f32>, biases: DMatrix<f32>, activation: ActivationFunction, layer_type: LayerType) -> Layer {
+    pub fn from(weights: DMatrix<f32>, biases: DMatrix<f32>, activation: ActivationFunction) -> Layer {
         Layer {
             weights: weights.clone(),
             weight_velocity: DMatrix::<f32>::zeros(weights.nrows(), weights.ncols()),
@@ -70,62 +67,25 @@ impl Layer {
             ins: weights.nrows(),
             outs: weights.ncols(),
             activation,
-            layer_type,
         }
     }
 
     pub(crate) fn feedforward(&mut self, inp: DMatrix<f32>) -> DMatrix<f32> {
-        return match self.layer_type {
-            FullyConnected => {
-                let mut out = self.weights().transpose() * inp;
+        let mut out = self.weights().transpose() * inp;
 
-                if out.shape() == self.biases().shape() {
-                    out += self.biases();
-                } else {
-                    out += expand_columns(out.ncols(), self.biases());
-                }
+        if out.shape() == self.biases().shape() {
+            out += self.biases();
+        } else {
+            out += expand_columns(out.ncols(), self.biases());
+        }
 
-                self.net = out.clone();
+        self.net = out.clone();
 
-                out = out.map(*self.activation.original());
+        out = out.map(*self.activation.original());
 
-                self.outputs = out.clone();
+        self.outputs = out.clone();
 
-                out
-            }
-            Dropout => {
-                let bernoulli = Bernoulli::new(0.8).unwrap();
-                let bernoulli_mat = DMatrix::<f32>::from_fn(self.weights.nrows(), self.weights.ncols(), |_, _| f32::from(bernoulli.sample(&mut thread_rng())));
-
-                let dropped_weights: DMatrix<f32> = self.weights.component_mul(&bernoulli_mat).cast();
-
-                let mut out = dropped_weights.transpose() * inp;
-
-                if out.shape() == self.biases().shape() {
-                    out += self.biases();
-                } else {
-                    out += expand_columns(out.ncols(), self.biases());
-                }
-
-                self.net = out.clone();
-
-                out = out.map(*self.activation.original());
-
-                self.outputs = out.clone();
-
-                out
-            }
-            Convolutional => {
-                //batch size 1 only
-
-                
-
-                inp
-            }
-            PassThrough => {
-                inp
-            }
-        };
+        out
     }
 
     pub fn guess(&self, inp: DMatrix<f32>) -> DMatrix<f32> {
@@ -163,27 +123,9 @@ impl Layer {
     }
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-pub enum LayerType {
-    #[serde(alias = "fc", alias = "fully_connected")] FullyConnected = 0,
-    #[serde(alias = "conv", alias = "convolutional")] Convolutional = 1,
-    #[serde(alias = "pass", alias = "pass_through")] PassThrough = 2,
-    #[serde(alias = "drop", alias = "dropout")] Dropout = 3,
-}
-
-impl LayerType {
-    pub fn from_u8(u: u8) -> Result<LayerType, Error> {
-        match u {
-            0 => { Ok(FullyConnected) }
-            1 => { Ok(Convolutional) }
-            2 => { Ok(PassThrough) }
-            3 => { Ok(Dropout) }
-            _ => { Err(Error::new(format!("unknown variant '{}', expected one of '0', '1', '2'", u), Status::BadRequest)) }
-        }
-    }
-}
-
 pub fn expand_columns(ncols: usize, mat: &DMatrix<f32>) -> DMatrix<f32> {
+    assert_eq!(1, mat.ncols());
+
     let vec = mat.as_slice().to_vec();
 
     let mut new_vec = Vec::new();
@@ -204,13 +146,13 @@ pub fn expand_rows(nrows: usize, mat: &DMatrix<f32>) -> DMatrix<f32> {
         new_vec.append(&mut vec.clone());
     }
 
-    DMatrix::<f32>::from_vec(nrows, vec.len(), new_vec)
+    DMatrix::<f32>::from_vec(nrows, vec.len(), new_vec).transpose()
 }
 
 pub fn column_mean(mat: DMatrix<f32>) -> DMatrix<f32> {
-    DMatrix::<f32>::from_vec(mat.nrows(), 1, mat.column_mean().as_slice().to_vec())
+    DMatrix::<f32>::from_column_slice(mat.nrows(), 1, mat.column_mean().as_slice())
 }
 
 pub fn row_mean(mat: DMatrix<f32>) -> DMatrix<f32> {
-    DMatrix::<f32>::from_vec(1, mat.ncols(), mat.row_mean().as_slice().to_vec())
+    DMatrix::<f32>::from_row_slice(1, mat.ncols(), mat.row_mean().as_slice())
 }

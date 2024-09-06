@@ -9,8 +9,6 @@ use rocket::form::validate::Len;
 use rocket::http::Status;
 use serde::{Deserialize, Serialize};
 use crate::data_sets::DataSet::*;
-use crate::layer::LayerType;
-use crate::layer::LayerType::{Convolutional, Dropout, FullyConnected, PassThrough};
 use crate::utils::Error;
 
 #[derive(Clone)]
