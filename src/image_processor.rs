@@ -62,7 +62,7 @@ impl ImageProcessor {
             image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val * 255, *val * 255, *val * 255]));
         }
 
-        debug_only!(image.save("logs/original_image.png").unwrap());
+        debug_only!(image.save("logs/original_image.png")?);
 
         let clusters = get_clusters(&image, 100);
         let max_cluster = get_max_cluster(clusters);

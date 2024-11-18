@@ -46,7 +46,7 @@ impl Network {
             inputs = layer.feedforward(inputs);
         }
 
-        return inputs;
+        inputs
     }
 
     pub fn guess(&self, inputs: &Vec<f32>) -> DMatrix<f32> {
@@ -56,7 +56,7 @@ impl Network {
             out = layer.guess(out);
         }
 
-        return out;
+        out
     }
 
     pub(crate) fn backpropagation_batches(
@@ -73,17 +73,8 @@ impl Network {
         let outputs: DMatrix<f32> = self.feedforward(inputs.clone());
 
         for index in (0..self.layers.len()).rev() {
-            let activation_derivative = self
-                .layers
-                .get(index)
-                .ok_or(utils::Error::back_prop())?
-                .activation()
-                .derivative();
-            let net = self
-                .layers
-                .get(index)
-                .ok_or(utils::Error::back_prop())?
-                .net();
+            let activation_derivative = self.layers[index].activation().derivative();
+            let net = self.layers[index].net();
             let prime_activated_net = net.map(activation_derivative);
 
             let mut bias_gradient: DMatrix<f32>;
@@ -138,19 +129,9 @@ impl Network {
 
                 bias_gradient = column_mean(error.clone());
 
-                weight_gradient = self
-                    .layers
-                    .get(index - 1)
-                    .ok_or(utils::Error::back_prop())?
-                    .outputs()
-                    * error.transpose();
+                weight_gradient = self.layers[index - 1].outputs() * error.transpose();
             } else {
-                let left_side: DMatrix<f32> = self
-                    .layers
-                    .get(index + 1)
-                    .ok_or(utils::Error::back_prop())?
-                    .weights()
-                    * &error;
+                let left_side: DMatrix<f32> = self.layers[index + 1].weights() * &error;
 
                 error = left_side.component_mul(&prime_activated_net);
 
@@ -159,12 +140,7 @@ impl Network {
                 if index == 0 {
                     weight_gradient = inputs.clone() * error.transpose();
                 } else {
-                    weight_gradient = self
-                        .layers
-                        .get(index - 1)
-                        .ok_or(utils::Error::back_prop())?
-                        .outputs()
-                        * error.transpose();
+                    weight_gradient = self.layers[index - 1].outputs() * error.transpose();
                 }
             }
 

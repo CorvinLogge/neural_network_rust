@@ -9,7 +9,7 @@ use image::{ImageBuffer, Rgb};
 use rocket::fairing::{Fairing, Info, Kind};
 use rocket::http::{Header, Status};
 use rocket::serde::json::Json;
-use rocket::{Build, Request, Response, Rocket};
+use rocket::{Build, Data, Request, Response, Rocket};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -78,9 +78,9 @@ fn train_batches_plot(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error
 
     network.init();
 
-    let plot = network.train_batches_plot(request.epochs, request.batch_size)?;
-
     let id = network.save_to_def_path()?;
+
+    let plot = network.train_batches_plot(request.epochs, request.batch_size)?;
 
     let plot_w = 640;
     let plot_h = 480;
@@ -132,8 +132,8 @@ fn generate_images_(data_set: DataSet) -> Result<(), Error> {
 }
 
 #[get("/test")]
-fn test() -> String {
-    "Connection worked\n".to_string()
+fn test() -> &'static str {
+    "Connection worked\n"
 }
 
 #[options("/<_..>")]
@@ -143,24 +143,21 @@ fn all_options() {
 
 #[launch]
 fn rocket() -> Rocket<Build> {
-    let rocket = rocket::build();
-    let figment = rocket.figment();
-    let profile = figment.profile();
-
-    let mut routes;
     let mut debug = false;
 
-    match profile.to_string().as_str() {
-        "debug" | "local" => unsafe {
+    #[cfg(feature = "local")]
+    {
+        unsafe {
             DEBUG = true;
-            debug = true;
-        },
-        _ => {}
+        }
+        debug = true;
     }
 
-    match debug {
+    let rocket = rocket::build();
+
+    let routes = match debug {
         true => {
-            routes = routes![
+            routes![
                 guess,
                 all_options,
                 profile,
@@ -170,8 +167,8 @@ fn rocket() -> Rocket<Build> {
                 generate_images_
             ]
         }
-        false => routes = routes![guess, all_options, test],
-    }
+        false => routes![guess, all_options, test],
+    };
 
     rocket.mount("/network", routes).attach(CORS)
 }

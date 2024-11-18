@@ -19,5 +19,5 @@ num-integer = "0.1.46"
 regex = "1.10.4"
 derive-getters = "0.4.0"
 
-[profile.local]
-inherits = "release"
+[features]
+local = []

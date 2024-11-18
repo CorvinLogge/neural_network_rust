@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug};
 use std::fs;
 use std::ops::Range;
@@ -88,7 +88,7 @@ fn read_emnist(inputs_path: String, targets_path: String, num_classes: usize) ->
         });
     }
 
-    return data_points.clone();
+    data_points.clone()
 }
 
 //Mirrors a quadratic vector along the diagonal from top left to bottom right
