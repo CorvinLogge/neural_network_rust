@@ -70,7 +70,7 @@ impl Layer {
         }
     }
 
-    pub(crate) fn feedforward(&mut self, inp: DMatrix<f32>) -> DMatrix<f32> {
+    pub(crate) fn feedforward(&mut self, inp: &DMatrix<f32>) -> DMatrix<f32> {
         let mut out = self.weights().transpose() * inp;
 
         if out.shape() == self.biases().shape() {

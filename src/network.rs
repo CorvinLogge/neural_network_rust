@@ -1,18 +1,21 @@
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
 use std::io::Write;
-use std::ops::Not;
+use std::ops::{Deref, Not};
 use std::path::Path;
-
+use std::sync::{Arc, Mutex};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use indicatif::ProgressIterator;
 use nalgebra::{DMatrix, Dyn, VecStorage, Vector, U1};
 use num_traits::{Float, Pow};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::iter::IndexedParallelIterator;
+use rayon::prelude::ParallelIterator;
 use rocket::serde::{Deserialize, Serialize};
-
 use crate::data_sets::{read_emnist_test, read_emnist_train, DataPoint, DataSet};
 use crate::function::ActivationFunction::{RELU, SIGMOID};
 use crate::function::ErrorFunction::*;
@@ -41,9 +44,10 @@ impl Network {
             .to_string();
     }
 
-    pub(crate) fn feedforward(&mut self, mut inputs: DMatrix<f32>) -> DMatrix<f32> {
+    pub(crate) fn feedforward(&mut self, mut inputs: &DMatrix<f32>) -> DMatrix<f32> {
+        let mut inputs = inputs.clone();
         for layer in self.layers.iter_mut() {
-            inputs = layer.feedforward(inputs);
+            inputs = layer.feedforward(&inputs);
         }
 
         inputs
@@ -70,7 +74,7 @@ impl Network {
 
         let mut error: DMatrix<f32> = DMatrix::<f32>::zeros(0, 0);
 
-        let outputs: DMatrix<f32> = self.feedforward(inputs.clone());
+        let outputs: DMatrix<f32> = self.feedforward(&inputs);
 
         for index in (0..self.layers.len()).rev() {
             let activation_derivative = self.layers[index].activation().derivative();
@@ -108,13 +112,13 @@ impl Network {
                         error
                     }
                     L2 => {
-                        let weights = self.layers.last().unwrap().weights().clone();
+                        let weights = self.layers.last().unwrap().weights();
                         let abs_sum = weights
                             .clone()
                             .apply_into(|val| *val = val.pow(2))
                             .sum()
                             .sqrt();
-                        let norm_weights = (1.0 / abs_sum) * &weights;
+                        let norm_weights = (1.0 / abs_sum) * weights;
                         let row_mean = row_mean(norm_weights);
                         let expanded_columns = expand_columns(outputs.ncols(), &row_mean);
 
@@ -492,21 +496,48 @@ fn combine_batch(batch: &[DataPoint]) -> (DMatrix<f32>, DMatrix<f32>) {
     let len_inputs = batch.first().unwrap().input.len();
     let len_target = batch.first().unwrap().target.len();
 
-    let mut inputs = DMatrix::<f32>::zeros(len_inputs, batch.len());
-    let mut targets = DMatrix::<f32>::zeros(len_target, batch.len());
+    let mut inputs: DMatrix<f32> = DMatrix::<f32>::zeros(len_inputs, batch.len());
+    let mut targets: DMatrix<f32> = DMatrix::<f32>::zeros(len_target, batch.len());
+
+    // let mut inputs = Arc::new(Mutex::new(inputs));
+    // let mut targets = Arc::new(Mutex::new(targets));
+
+
+    // batch.par_iter().enumerate().for_each(|(index, data_point)| {
+    //     let input = Vector::from_vec_storage(VecStorage::new(
+    //         Dyn(len_inputs),
+    //         U1,
+    //         data_point.input.clone(), // todo: optimize cloning
+    //     ));
+    //     inputs.lock().unwrap().set_column(index, &input);
+    //
+    //     let input = Vector::from_vec_storage(VecStorage::new(
+    //         Dyn(len_target),
+    //         U1,
+    //         data_point.target.clone(), // todo: optimize cloning
+    //     ));
+    //     targets.lock().unwrap().set_column(index, &input);
+    // });
+
+    // let result = ((*inputs.lock().unwrap()).clone(), ((*inputs.lock().unwrap()).clone()));
+    //
+    // result
+
+    let mut inputs = inputs;
+    let mut targets = targets;
 
     for (index, data_point) in batch.iter().enumerate() {
         let input = Vector::from_vec_storage(VecStorage::new(
             Dyn(len_inputs),
             U1,
-            data_point.input.clone(), // todo: optimize cloning
+            data_point.input.as_slice().to_vec(), // todo: optimize cloning
         ));
         inputs.set_column(index, &input);
 
         let input = Vector::from_vec_storage(VecStorage::new(
             Dyn(len_target),
             U1,
-            data_point.target.clone(), // todo: optimize cloning
+            data_point.target.as_slice().to_vec(), // todo: optimize cloning
         ));
         targets.set_column(index, &input);
     }
