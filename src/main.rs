@@ -110,7 +110,7 @@ fn profile(request: Json<ProfileReq>) -> Result<Json<ProfileResult>, Error> {
     let testing_data = read_emnist_test(&data_path, num_classes);
 
     let network_id = &request.network_id;
-    let network = Network::from_file(format!("./resources/models/{network_id}"))?;
+    let network = Network::from_file(&format!("./resources/models/{network_id}"))?;
     let profile = network.profile(request.tolerance, &testing_data)?;
 
     Ok(Json::from(profile))
@@ -118,7 +118,7 @@ fn profile(request: Json<ProfileReq>) -> Result<Json<ProfileResult>, Error> {
 
 #[post("/guess", data = "<request>")]
 fn guess(request: Json<GuessReq>) -> Result<Json<Vec<f32>>, Error> {
-    let mut network = Network::from_file(format!("./resources/models/{}", request.network_id))?;
+    let mut network = Network::from_file(&request.network_id)?;
     let guess = network.guess(&ImageProcessor::from_rle(&request.image)?);
     let data = guess.data.as_vec();
     Ok(Json::from(data.clone()))

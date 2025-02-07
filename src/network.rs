@@ -1,21 +1,3 @@
-use std::cell::Cell;
-use std::collections::VecDeque;
-use std::fs;
-use std::fs::File;
-use std::io::Write;
-use std::ops::{Deref, Not};
-use std::path::Path;
-use std::sync::{Arc, Mutex};
-use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use indicatif::ProgressIterator;
-use nalgebra::{DMatrix, Dyn, VecStorage, Vector, U1};
-use num_traits::{Float, Pow};
-use rand::seq::SliceRandom;
-use rand::thread_rng;
-use rayon::iter::IntoParallelRefIterator;
-use rayon::iter::IndexedParallelIterator;
-use rayon::prelude::ParallelIterator;
-use rocket::serde::{Deserialize, Serialize};
 use crate::data_sets::{read_emnist_test, read_emnist_train, DataPoint, DataSet};
 use crate::function::ActivationFunction::{RELU, SIGMOID};
 use crate::function::ErrorFunction::*;
@@ -24,6 +6,24 @@ use crate::layer::{column_mean, expand_columns, row_mean, Layer};
 use crate::optimizers::Optimizer;
 use crate::DEBUG;
 use crate::{debug_only, utils, NET_ID_PATTERN};
+use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
+use indicatif::ProgressIterator;
+use nalgebra::{DMatrix, Dyn, VecStorage, Vector, U1};
+use num_traits::{Float, Pow};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+use rayon::iter::IndexedParallelIterator;
+use rayon::iter::IntoParallelRefIterator;
+use rayon::prelude::ParallelIterator;
+use rocket::serde::{Deserialize, Serialize};
+use std::cell::Cell;
+use std::collections::VecDeque;
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::ops::{Deref, Not};
+use std::path::Path;
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Network {
@@ -44,7 +44,7 @@ impl Network {
             .to_string();
     }
 
-    pub(crate) fn feedforward(&mut self, mut inputs: &DMatrix<f32>) -> DMatrix<f32> {
+    pub fn feedforward(&mut self, mut inputs: &DMatrix<f32>) -> DMatrix<f32> {
         let mut inputs = inputs.clone();
         for layer in self.layers.iter_mut() {
             inputs = layer.feedforward(&inputs);
@@ -63,7 +63,7 @@ impl Network {
         out
     }
 
-    pub(crate) fn backpropagation_batches(
+    pub fn backpropagation_batches(
         &mut self,
         batch: &[DataPoint],
         beta_1: f32,
@@ -321,99 +321,13 @@ impl Network {
         ))
     }
 
-    pub fn from_file(file_path: String) -> Result<Network, utils::Error> {
-        let network_path = format!("{file_path}/network");
-        let mut network_bytes = VecDeque::from(fs::read(network_path)?);
-
-        let layer_specs_len = byteorder::BigEndian::read_u32(
-            network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
-        );
-
-        let mut layer_specs = Vec::with_capacity(layer_specs_len as usize);
-        let mut layers = Vec::with_capacity((layer_specs_len - 1) as usize);
-
-        for _ in 0..layer_specs_len {
-            layer_specs.push(byteorder::BigEndian::read_u32(
-                network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
-            ));
-        }
-
-        for index in 0..layer_specs.len() - 1 {
-            let num_ins = *layer_specs.get(index).ok_or(utils::Error::io_error())?;
-            let num_outs = *layer_specs.get(index + 1).ok_or(utils::Error::io_error())?;
-
-            let mut weight_data: Vec<f32> = Vec::with_capacity((num_ins * num_outs) as usize);
-            let mut bias_data: Vec<f32> = Vec::with_capacity(num_outs as usize);
-
-            for _ in 0..(num_ins * num_outs) {
-                weight_data.push(byteorder::BigEndian::read_f32(
-                    network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
-                ));
-            }
-
-            for _ in 0..num_outs {
-                bias_data.push(byteorder::BigEndian::read_f32(
-                    network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
-                ));
-            }
-
-            let weights =
-                DMatrix::<f32>::from_vec(num_ins as usize, num_outs as usize, weight_data);
-            let biases = DMatrix::<f32>::from_vec(num_outs as usize, 1, bias_data);
-
-            let activation: ActivationFunction = ActivationFunction::from_u8(
-                *network_bytes
-                    .drain(..1)
-                    .collect::<Vec<u8>>()
-                    .as_slice()
-                    .first()
-                    .unwrap(),
-            )?;
-
-            layers.push(Layer::from(weights, biases, activation));
-        }
-
-        let lr = byteorder::BigEndian::read_f32(
-            network_bytes.drain(..4).collect::<Vec<u8>>().as_slice(),
-        );
-
-        let error: ErrorFunction = ErrorFunction::from_u8(
-            *network_bytes
-                .drain(..1)
-                .collect::<Vec<u8>>()
-                .first()
-                .unwrap_or(&(ErrorFunction::MSE as u8)),
-        )?;
-
-        let optimizer: Optimizer = Optimizer::from(
-            *network_bytes
-                .drain(..1)
-                .collect::<Vec<u8>>()
-                .first()
-                .unwrap_or(&(Optimizer::Adam as u8)),
-        )?;
-
-        let data_set: DataSet = DataSet::from_u8(
-            *network_bytes
-                .drain(..1)
-                .collect::<Vec<u8>>()
-                .first()
-                .unwrap_or(&(DataSet::MnistDigits as u8)),
-        )?;
-
-        Ok(Network {
-            layers,
-            lr,
-            id: Path::new(file_path.as_str())
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .to_string(),
-            error,
-            data_set,
-            optimizer,
-        })
+    pub fn from_file(file_path: &String) -> Result<Network, utils::Error> {
+        let bytes = Self::get_file_bytes(file_path)?;
+        Network::try_from(bytes)
+    }
+    fn get_file_bytes(file_path: &String) -> Result<VecDeque<u8>, utils::Error> {
+        let network_path = format!("/{file_path}");
+        Ok(VecDeque::from(fs::read(network_path)?))
     }
 
     /// Saves the entire network to a file in a custom format (for now)
@@ -492,36 +406,100 @@ impl Network {
     }
 }
 
+impl TryFrom<VecDeque<u8>> for Network {
+    type Error = utils::Error;
+
+    fn try_from(mut value: VecDeque<u8>) -> Result<Self, Self::Error> {
+        let layer_specs_len =
+            byteorder::BigEndian::read_u32(value.drain(..4).collect::<Vec<u8>>().as_slice());
+
+        let mut layer_specs = Vec::with_capacity(layer_specs_len as usize);
+        let mut layers = Vec::with_capacity((layer_specs_len - 1) as usize);
+
+        for _ in 0..layer_specs_len {
+            layer_specs.push(byteorder::BigEndian::read_u32(
+                value.drain(..4).collect::<Vec<u8>>().as_slice(),
+            ));
+        }
+
+        for index in 0..layer_specs.len() - 1 {
+            let num_ins = *layer_specs.get(index).ok_or(utils::Error::io_error())?;
+            let num_outs = *layer_specs.get(index + 1).ok_or(utils::Error::io_error())?;
+
+            let mut weight_data: Vec<f32> = Vec::with_capacity((num_ins * num_outs) as usize);
+            let mut bias_data: Vec<f32> = Vec::with_capacity(num_outs as usize);
+
+            for _ in 0..(num_ins * num_outs) {
+                weight_data.push(byteorder::BigEndian::read_f32(
+                    value.drain(..4).collect::<Vec<u8>>().as_slice(),
+                ));
+            }
+
+            for _ in 0..num_outs {
+                bias_data.push(byteorder::BigEndian::read_f32(
+                    value.drain(..4).collect::<Vec<u8>>().as_slice(),
+                ));
+            }
+
+            let weights =
+                DMatrix::<f32>::from_vec(num_ins as usize, num_outs as usize, weight_data);
+            let biases = DMatrix::<f32>::from_vec(num_outs as usize, 1, bias_data);
+
+            let activation: ActivationFunction = ActivationFunction::from_u8(
+                *value
+                    .drain(..1)
+                    .collect::<Vec<u8>>()
+                    .as_slice()
+                    .first()
+                    .unwrap(),
+            )?;
+
+            layers.push(Layer::from(weights, biases, activation));
+        }
+
+        let lr = byteorder::BigEndian::read_f32(value.drain(..4).collect::<Vec<u8>>().as_slice());
+
+        let error: ErrorFunction = ErrorFunction::from_u8(
+            *value
+                .drain(..1)
+                .collect::<Vec<u8>>()
+                .first()
+                .unwrap_or(&(ErrorFunction::MSE as u8)),
+        )?;
+
+        let optimizer: Optimizer = Optimizer::from(
+            *value
+                .drain(..1)
+                .collect::<Vec<u8>>()
+                .first()
+                .unwrap_or(&(Optimizer::Adam as u8)),
+        )?;
+
+        let data_set: DataSet = DataSet::from_u8(
+            *value
+                .drain(..1)
+                .collect::<Vec<u8>>()
+                .first()
+                .unwrap_or(&(DataSet::MnistDigits as u8)),
+        )?;
+
+        Ok(Network {
+            layers,
+            lr,
+            id: "embedded".to_string(),
+            error,
+            data_set,
+            optimizer,
+        })
+    }
+}
+
 fn combine_batch(batch: &[DataPoint]) -> (DMatrix<f32>, DMatrix<f32>) {
     let len_inputs = batch.first().unwrap().input.len();
     let len_target = batch.first().unwrap().target.len();
 
     let mut inputs: DMatrix<f32> = DMatrix::<f32>::zeros(len_inputs, batch.len());
     let mut targets: DMatrix<f32> = DMatrix::<f32>::zeros(len_target, batch.len());
-
-    // let mut inputs = Arc::new(Mutex::new(inputs));
-    // let mut targets = Arc::new(Mutex::new(targets));
-
-
-    // batch.par_iter().enumerate().for_each(|(index, data_point)| {
-    //     let input = Vector::from_vec_storage(VecStorage::new(
-    //         Dyn(len_inputs),
-    //         U1,
-    //         data_point.input.clone(), // todo: optimize cloning
-    //     ));
-    //     inputs.lock().unwrap().set_column(index, &input);
-    //
-    //     let input = Vector::from_vec_storage(VecStorage::new(
-    //         Dyn(len_target),
-    //         U1,
-    //         data_point.target.clone(), // todo: optimize cloning
-    //     ));
-    //     targets.lock().unwrap().set_column(index, &input);
-    // });
-
-    // let result = ((*inputs.lock().unwrap()).clone(), ((*inputs.lock().unwrap()).clone()));
-    //
-    // result
 
     let mut inputs = inputs;
     let mut targets = targets;
@@ -582,4 +560,3 @@ pub enum ActivationMode {
     #[serde(alias = "relu_sig")]
     ReluSig,
 }
-

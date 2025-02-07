@@ -69,8 +69,8 @@ impl ImageProcessor {
 
         image = preprocess!(
             image,
-            gaussian_blur(1f32),
             denoise(&max_cluster),
+            gaussian_blur(1f32),
             crop(&max_cluster),
             resize(24, 24, FilterType::Gaussian),
             center
