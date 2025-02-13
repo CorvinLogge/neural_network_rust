@@ -1,14 +1,12 @@
 use std::clone::Clone;
 use std::f32::consts::E;
 
+use crate::error::{Error, ErrorKind};
 use nalgebra::DMatrix;
 use num_traits::Pow;
-use rand::{random, Rng, thread_rng};
+use rand::{random, thread_rng, Rng};
 use rocket::http::Status;
 use rocket::serde::{Deserialize, Serialize};
-use rocket::shield::Feature::Accelerometer;
-use crate::network::ActivationMode;
-use crate::utils::Error;
 
 const L_RELU: fn(f32) -> f32 = |x| if x >= 0f32 { x } else { 0.025 * x };
 const L_RELU_P: fn(f32) -> f32 = |x| if x < 0.0 { 0.025 } else { 1.0 };
@@ -44,14 +42,16 @@ pub enum ErrorFunction {
     #[serde(alias = "l2")] L2 = 3,
 }
 
-impl ErrorFunction {
-    pub fn from_u8(u: u8) -> Result<ErrorFunction, Error> {
-        match u {
-            0 => { Ok(ErrorFunction::MSE) }
-            1 => { Ok(ErrorFunction::CrossEntropy) }
-            2 => { Ok(ErrorFunction::L1) }
-            3 => { Ok(ErrorFunction::L2) }
-            _ => { Err(Error::new(format!("unknown variant '{}', expected one of '0', '1', '2', '3'", u), Status::BadRequest)) }
+impl TryFrom<u8> for ErrorFunction {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Error> {
+        match value {
+            0 => Ok(ErrorFunction::MSE),
+            1 => Ok(ErrorFunction::CrossEntropy),
+            2 => Ok(ErrorFunction::L1),
+            3 => Ok(ErrorFunction::L2),
+            _ => Err(Error::unknown_variant(vec![0, 1, 2, 3], value)),
         }
     }
 }
@@ -66,42 +66,46 @@ pub enum ActivationFunction {
 impl ActivationFunction {
     pub(crate) fn derivative(&self) -> Box<impl Fn(f32) -> f32> {
         match self {
-            ActivationFunction::RELU => { Box::new(RELU_P) }
-            ActivationFunction::LRELU => { Box::new(L_RELU_P) }
-            ActivationFunction::SIGMOID => { Box::new(SIGMOID_P) }
+            ActivationFunction::RELU => Box::new(RELU_P),
+            ActivationFunction::LRELU => Box::new(L_RELU_P),
+            ActivationFunction::SIGMOID => Box::new(SIGMOID_P),
         }
     }
 
     pub(crate) fn original(&self) -> Box<impl Fn(f32) -> f32> {
         match self {
-            ActivationFunction::RELU => { Box::new(RELU) }
-            ActivationFunction::LRELU => { Box::new(L_RELU) }
-            ActivationFunction::SIGMOID => { Box::new(SIGMOID) }
+            ActivationFunction::RELU => Box::new(RELU),
+            ActivationFunction::LRELU => Box::new(L_RELU),
+            ActivationFunction::SIGMOID => Box::new(SIGMOID),
         }
     }
 
     pub(crate) fn weight_initialization(&self, ins: usize) -> Box<impl Fn(usize, usize) -> f32> {
         match self {
-            ActivationFunction::RELU => { Box::new(HE_INIT(ins)) }
-            ActivationFunction::LRELU => { Box::new(HE_INIT(ins)) }
-            ActivationFunction::SIGMOID => { Box::new(XAVIER_INIT(ins)) }
+            ActivationFunction::RELU => Box::new(HE_INIT(ins)),
+            ActivationFunction::LRELU => Box::new(HE_INIT(ins)),
+            ActivationFunction::SIGMOID => Box::new(XAVIER_INIT(ins)),
         }
     }
 
     pub(crate) fn bias_initialization(&self) -> Box<impl Fn(usize, usize) -> f32> {
         match self {
-            ActivationFunction::RELU => { Box::new(RAND_0_1) }
-            ActivationFunction::LRELU => { Box::new(ZERO) }
-            ActivationFunction::SIGMOID => { Box::new(ZERO) }
+            ActivationFunction::RELU => Box::new(RAND_0_1),
+            ActivationFunction::LRELU => Box::new(ZERO),
+            ActivationFunction::SIGMOID => Box::new(ZERO),
         }
     }
+}
 
-    pub fn from_u8(u: u8) -> Result<ActivationFunction, Error> {
-        match u {
-            0 => { Ok(ActivationFunction::RELU) }
-            1 => { Ok(ActivationFunction::LRELU) }
-            2 => { Ok(ActivationFunction::SIGMOID) }
-            _ => { Err(Error::new(format!("unknown variant '{}', expected one of '0', '1', '2'", u), Status::BadRequest)) }
+impl TryFrom<u8> for ActivationFunction {
+    type Error = Error;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ActivationFunction::RELU),
+            1 => Ok(ActivationFunction::LRELU),
+            2 => Ok(ActivationFunction::SIGMOID),
+            _ => Err(Error::unknown_variant(vec![0,1,2], value)),
         }
     }
 }

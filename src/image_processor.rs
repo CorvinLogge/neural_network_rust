@@ -3,13 +3,13 @@ use std::collections::VecDeque;
 use std::ops::Add;
 use std::ops::Deref;
 
-use image::{ImageBuffer, Rgb};
 use image::imageops::FilterType;
+use image::{ImageBuffer, Rgb};
 use regex::Regex;
 
-use crate::DEBUG;
 use crate::debug_only;
-use crate::utils::Error;
+use crate::error::Error;
+use crate::DEBUG;
 
 macro_rules! preprocess {
     ($image:expr, $($function:ident $(($($args:expr),*))?),*) => {{

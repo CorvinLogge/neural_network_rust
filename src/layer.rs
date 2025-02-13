@@ -1,13 +1,10 @@
 use derive_getters::Getters;
 use nalgebra::DMatrix;
-use rand::distributions::{Bernoulli, Distribution};
-use rand::thread_rng;
-use rocket::http::Status;
-use rocket::serde::{Deserialize, Serialize};
+use rand::distributions::Distribution;
+use rocket::serde::Deserialize;
 
 use crate::function::ActivationFunction;
 use crate::function::ActivationFunction::RELU;
-use crate::utils::Error;
 
 #[derive(Clone, Debug, Getters, Deserialize)]
 pub struct Layer {

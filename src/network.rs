@@ -1,11 +1,10 @@
 use crate::data_sets::{read_emnist_test, read_emnist_train, DataPoint, DataSet};
-use crate::function::ActivationFunction::{RELU, SIGMOID};
+use crate::error::{Error, ErrorKind};
 use crate::function::ErrorFunction::*;
-use crate::function::{equ, ActivationFunction, ErrorFunction};
+use crate::function::{ActivationFunction, ErrorFunction};
 use crate::layer::{column_mean, expand_columns, row_mean, Layer};
 use crate::optimizers::Optimizer;
-use crate::DEBUG;
-use crate::{debug_only, utils, NET_ID_PATTERN};
+use crate::NET_ID_PATTERN;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use indicatif::ProgressIterator;
 use nalgebra::{DMatrix, Dyn, VecStorage, Vector, U1};
@@ -13,17 +12,13 @@ use num_traits::{Float, Pow};
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use rayon::iter::IndexedParallelIterator;
-use rayon::iter::IntoParallelRefIterator;
 use rayon::prelude::ParallelIterator;
+use rocket::http::Status;
 use rocket::serde::{Deserialize, Serialize};
-use std::cell::Cell;
 use std::collections::VecDeque;
 use std::fs;
 use std::fs::File;
-use std::io::Write;
-use std::ops::{Deref, Not};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug, Deserialize)]
 pub(crate) struct Network {
@@ -69,7 +64,7 @@ impl Network {
         beta_1: f32,
         beta_2: f32,
         t: usize,
-    ) -> Result<(), utils::Error> {
+    ) -> Result<(), Error>{
         let (inputs, targets) = combine_batch(batch);
 
         let mut error: DMatrix<f32> = DMatrix::<f32>::zeros(0, 0);
@@ -148,10 +143,7 @@ impl Network {
                 }
             }
 
-            let layer = self
-                .layers
-                .get_mut(index)
-                .ok_or(utils::Error::back_prop())?;
+            let layer = self.layers.get_mut(index).ok_or(Error::back_prop())?;
 
             let weight_velocity = layer.weight_velocity();
             let bias_velocity = layer.bias_velocity();
@@ -218,7 +210,7 @@ impl Network {
         Ok(())
     }
 
-    pub fn train_batches(&mut self, epochs: usize, batch_size: usize) -> Result<(), utils::Error> {
+    pub fn train_batches(&mut self, epochs: usize, batch_size: usize) -> Result<(), Error> {
         self.train_batches_plot(epochs, batch_size)?;
 
         Ok(())
@@ -228,14 +220,14 @@ impl Network {
         &mut self,
         epochs: usize,
         batch_size: usize,
-    ) -> Result<Vec<(f32, f32)>, utils::Error> {
+    ) -> Result<Vec<(f32, f32)>, Error> {
         let data_path = self.data_set.path();
         let num_classes = self.data_set.num_classes();
 
         let mut plot_points: Vec<(f32, f32)> = Vec::with_capacity(epochs);
 
-        let mut train_data = read_emnist_train(&data_path, num_classes);
-        let test_data = read_emnist_test(&data_path, num_classes);
+        let mut train_data = read_emnist_train(&data_path, num_classes)?;
+        let test_data = read_emnist_test(&data_path, num_classes)?;
 
         let mut t = 0;
 
@@ -265,26 +257,16 @@ impl Network {
         Ok(plot_points)
     }
 
-    pub fn profile(
-        &self,
-        tolerance: f32,
-        testing_data: &Vec<DataPoint>,
-    ) -> Result<ProfileResult, utils::Error> {
+    pub fn profile(&self, tolerance: f32, testing_data: &Vec<DataPoint>) -> Result<ProfileResult, Error> {
         let mut successes = 0;
         let mut fails = 0;
 
         for data_point in testing_data.iter() {
-            let mut out = self.guess(&data_point.input);
+            let mut out = self.guess(&data_point.input());
 
-            let expected =
-                DMatrix::<f32>::from_vec(data_point.target.len(), 1, data_point.target.clone());
+            let expected = data_point.target() as usize;
 
-            let ex_index = expected
-                .iter()
-                .position(|x| *x == 1.0)
-                .ok_or(utils::Error::profile())?;
-
-            if out.get(ex_index).ok_or(utils::Error::profile())? > &tolerance {
+            if out.get(expected).ok_or(Error::profile())? > &tolerance {
                 successes += 1;
             } else {
                 fails += 1;
@@ -300,34 +282,21 @@ impl Network {
         ))
     }
 
-    pub fn profile_str(
-        &self,
-        tolerance: f32,
-        testing_data: &Vec<DataPoint>,
-    ) -> Result<String, utils::Error> {
-        let profile_result = self.profile(tolerance, testing_data)?;
-
-        Ok(format!(
-            "Profiling Result for model: '{}'\n\
-                                      with tolerance: {}\n\
-                                      Successes: {}\n\
-                                      Failures: {}\n\
-                                      Accuracy: {}",
-            profile_result.model,
-            profile_result.tolerance,
-            profile_result.successes,
-            profile_result.failures,
-            profile_result.accuracy
-        ))
-    }
-
-    pub fn from_file(file_path: &String) -> Result<Network, utils::Error> {
+    pub fn from_file(file_path: &String) -> Result<Network, Error> {
         let bytes = Self::get_file_bytes(file_path)?;
         Network::try_from(bytes)
     }
-    fn get_file_bytes(file_path: &String) -> Result<VecDeque<u8>, utils::Error> {
-        let network_path = format!("/{file_path}");
-        Ok(VecDeque::from(fs::read(network_path)?))
+    fn get_file_bytes(file_path: &String, ) -> Result<VecDeque<u8>, Error> {
+        let network_path = format!("./{file_path}");
+        let bytes = fs::read(&network_path).map_err(|e| {
+            Error::new(
+                ErrorKind::IO,
+                format!("{}. Could not find file {}", e.to_string(), &network_path),
+                Status::InternalServerError,
+                Some(Box::new(e)),
+            )
+        })?;
+        Ok(VecDeque::from(bytes))
     }
 
     /// Saves the entire network to a file in a custom format (for now)
@@ -354,7 +323,7 @@ impl Network {
     ///
     /// Next byte is a u8 that deserializes to a DataSet
     ///
-    pub fn save_to_path(&self, dir_path: &str) -> Result<String, utils::Error> {
+    pub fn save_to_path(&self, dir_path: &str) -> Result<String, Error> {
         let folder_path_string = format!("{dir_path}/{}", self.id);
         let folder_path = Path::new(folder_path_string.as_str());
         fs::create_dir_all(folder_path)?;
@@ -401,13 +370,41 @@ impl Network {
         Ok(self.id.clone())
     }
 
-    pub fn save_to_def_path(&self) -> Result<String, utils::Error> {
+    pub fn save_to_def_path(&self) -> Result<String, Error> {
         Ok(self.save_to_path("./resources/models")?)
+    }
+
+    pub fn lr(&self) -> f32 {
+        self.lr
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    pub fn layers(&self) -> &Vec<Layer>
+    {
+        &self.layers
+    }
+
+    pub fn error(&self) -> ErrorFunction
+    {
+        self.error
+    }
+
+    pub fn optimizer(&self) -> Optimizer
+    {
+        self.optimizer
+    }
+
+    pub fn data_set(&self) -> DataSet
+    {
+        self.data_set
     }
 }
 
 impl TryFrom<VecDeque<u8>> for Network {
-    type Error = utils::Error;
+    type Error = Error;
 
     fn try_from(mut value: VecDeque<u8>) -> Result<Self, Self::Error> {
         let layer_specs_len =
@@ -423,8 +420,14 @@ impl TryFrom<VecDeque<u8>> for Network {
         }
 
         for index in 0..layer_specs.len() - 1 {
-            let num_ins = *layer_specs.get(index).ok_or(utils::Error::io_error())?;
-            let num_outs = *layer_specs.get(index + 1).ok_or(utils::Error::io_error())?;
+            let num_ins = *layer_specs.get(index).ok_or(Error::io(
+                format!("Failed reading number of inputs for layer {index}"),
+                None,
+            ))?;
+            let num_outs = *layer_specs.get(index + 1).ok_or(Error::io(
+                format!("Failed reading number of outputs for layer {index}"),
+                None,
+            ))?;
 
             let mut weight_data: Vec<f32> = Vec::with_capacity((num_ins * num_outs) as usize);
             let mut bias_data: Vec<f32> = Vec::with_capacity(num_outs as usize);
@@ -445,43 +448,31 @@ impl TryFrom<VecDeque<u8>> for Network {
                 DMatrix::<f32>::from_vec(num_ins as usize, num_outs as usize, weight_data);
             let biases = DMatrix::<f32>::from_vec(num_outs as usize, 1, bias_data);
 
-            let activation: ActivationFunction = ActivationFunction::from_u8(
-                *value
-                    .drain(..1)
-                    .collect::<Vec<u8>>()
-                    .as_slice()
-                    .first()
-                    .unwrap(),
-            )?;
+            let activation: ActivationFunction =
+                ActivationFunction::try_from(value.pop_front().ok_or(Error::io(
+                    "Failed reading activation function from file".to_string(),
+                    None,
+                ))?)?;
 
             layers.push(Layer::from(weights, biases, activation));
         }
 
         let lr = byteorder::BigEndian::read_f32(value.drain(..4).collect::<Vec<u8>>().as_slice());
 
-        let error: ErrorFunction = ErrorFunction::from_u8(
-            *value
-                .drain(..1)
-                .collect::<Vec<u8>>()
-                .first()
-                .unwrap_or(&(ErrorFunction::MSE as u8)),
-        )?;
+        let error: ErrorFunction = ErrorFunction::try_from(value.pop_front().ok_or(Error::io(
+            "Failed reading error function from file".to_string(),
+            None,
+        ))?)?;
 
-        let optimizer: Optimizer = Optimizer::from(
-            *value
-                .drain(..1)
-                .collect::<Vec<u8>>()
-                .first()
-                .unwrap_or(&(Optimizer::Adam as u8)),
-        )?;
+        let optimizer: Optimizer = Optimizer::try_from(value.pop_front().ok_or(Error::io(
+            "Failed reading optimizer from file".to_string(),
+            None,
+        ))?)?;
 
-        let data_set: DataSet = DataSet::from_u8(
-            *value
-                .drain(..1)
-                .collect::<Vec<u8>>()
-                .first()
-                .unwrap_or(&(DataSet::MnistDigits as u8)),
-        )?;
+        let data_set: DataSet = DataSet::try_from(value.pop_front().ok_or(Error::io(
+            "Failed reading data set from file".to_string(),
+            None,
+        ))?)?;
 
         Ok(Network {
             layers,
@@ -495,27 +486,27 @@ impl TryFrom<VecDeque<u8>> for Network {
 }
 
 fn combine_batch(batch: &[DataPoint]) -> (DMatrix<f32>, DMatrix<f32>) {
-    let len_inputs = batch.first().unwrap().input.len();
-    let len_target = batch.first().unwrap().target.len();
+    let len_inputs = batch.first().unwrap().input().len();
+    let len_target = batch.first().unwrap().target_vec().len();
 
     let mut inputs: DMatrix<f32> = DMatrix::<f32>::zeros(len_inputs, batch.len());
     let mut targets: DMatrix<f32> = DMatrix::<f32>::zeros(len_target, batch.len());
 
     let mut inputs = inputs;
-    let mut targets = targets;
+    let mut targets =targets;
 
     for (index, data_point) in batch.iter().enumerate() {
         let input = Vector::from_vec_storage(VecStorage::new(
             Dyn(len_inputs),
             U1,
-            data_point.input.as_slice().to_vec(), // todo: optimize cloning
+            data_point.input().as_slice().to_vec(),
         ));
         inputs.set_column(index, &input);
 
         let input = Vector::from_vec_storage(VecStorage::new(
             Dyn(len_target),
             U1,
-            data_point.target.as_slice().to_vec(), // todo: optimize cloning
+            data_point.target_vec().as_slice().to_vec(),
         ));
         targets.set_column(index, &input);
     }

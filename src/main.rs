@@ -3,33 +3,35 @@
 #[macro_use]
 extern crate rocket;
 
-use std::string::ToString;
-
-use image::{ImageBuffer, Rgb};
 use rocket::fairing::{Fairing, Info, Kind};
+use serde_json::{json, Value};
+
+use crate::data_sets::{read_emnist_test, DataSet};
+use crate::layer::Layer;
+use image::{ImageBuffer, Rgb};
 use rocket::http::{Header, Status};
 use rocket::serde::json::Json;
 use rocket::{Build, Data, Request, Response, Rocket};
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use std::string::ToString;
 
-use crate::data_sets::{read_emnist_test, DataSet};
+use crate::error::{Error, ErrorKind};
 use crate::function::ActivationFunction::SIGMOID;
 use crate::function::ErrorFunction;
 use crate::image_processor::ImageProcessor;
-use crate::layer::Layer;
 use crate::network::{ActivationMode, Network, ProfileResult};
 use crate::optimizers::Optimizer;
 use crate::plotter::file_plot;
-use crate::utils::Error;
 
 mod data_sets;
+mod error;
 mod function;
 mod image_processor;
 mod layer;
 mod network;
 mod optimizers;
 mod plotter;
+mod tests;
 mod utils;
 
 static mut DEBUG: bool = false;
@@ -46,7 +48,6 @@ struct TrainBatchReq {
 struct ProfileReq {
     network_id: String,
     tolerance: f32,
-    data_set: DataSet,
 }
 
 #[derive(Deserialize, Serialize, Debug)]
@@ -90,8 +91,10 @@ fn train_batches_plot(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error
 
     let image: ImageBuffer<Rgb<u8>, Vec<u8>> =
         ImageBuffer::from_vec(plot_w as u32, plot_h as u32, plot_buffer).ok_or(Error::new(
+            ErrorKind::Other,
             "Failed to save plot".to_string(),
             Status::InternalServerError,
+            None,
         ))?;
 
     image.save(format!("./resources/models/{id}/plot.png"))?;
@@ -105,19 +108,19 @@ fn train_batches_plot(request: Json<TrainBatchReq>) -> Result<Json<Value>, Error
 
 #[post("/profile", data = "<request>", format = "application/json")]
 fn profile(request: Json<ProfileReq>) -> Result<Json<ProfileResult>, Error> {
-    let data_path = request.data_set.path();
-    let num_classes = request.data_set.num_classes();
-    let testing_data = read_emnist_test(&data_path, num_classes);
+    let network = Network::from_file(&request.network_id)?;
 
-    let network_id = &request.network_id;
-    let network = Network::from_file(&format!("./resources/models/{network_id}"))?;
+    let data_path = network.data_set().path();
+    let num_classes = network.data_set().num_classes();
+    let testing_data = read_emnist_test(&data_path, num_classes)?;
+
     let profile = network.profile(request.tolerance, &testing_data)?;
 
     Ok(Json::from(profile))
 }
 
 #[post("/guess", data = "<request>")]
-fn guess(request: Json<GuessReq>) -> Result<Json<Vec<f32>>, Error> {
+pub(crate) fn guess(request: Json<GuessReq>) -> Result<Json<Vec<f32>>, Error> {
     let mut network = Network::from_file(&request.network_id)?;
     let guess = network.guess(&ImageProcessor::from_rle(&request.image)?);
     let data = guess.data.as_vec();
