@@ -8,6 +8,7 @@ name: Docker
 on:
   push:
     branches: [ "deploy" ]
+  workflow_dispatch:
 
 env:
   REGISTRY: docker.io
