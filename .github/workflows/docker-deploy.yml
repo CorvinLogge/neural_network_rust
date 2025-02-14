@@ -53,3 +53,37 @@ jobs:
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/neural_network:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log into Docker
+        uses: docker/login-action@343f7c4344506bcbf9b4de18042ae17996df046d # v3.0.0
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+
+      - name: Install sshpass
+        run: sudo apt-get install sshpass
+
+      - name: Copy docker-compose.yml
+        run: sshpass -v -p ${{ secrets.NETCUP_PASSWORD }} scp -o StrictHostKeyChecking=no compose.yml root@${{ vars.DROPLET_IP }}:/home/neural_network/docker
+
+      - name: Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.NETCUP_IP }}
+          username: root
+          password: ${{ secrets.NETCUP_PASSWORD }}
+          script: |
+            cd /home/neural_network/docker
+            export IMAGE_TAG=${{ github.sha }}
+            docker compose down
+            docker image prune -af
+            docker compose pull
+            docker compose up -d

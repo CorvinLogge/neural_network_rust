@@ -1,5 +1,6 @@
 services:
   server:
+    image: cloki/neural_network:${IMAGE_TAG}
     build:
       context: .
       target: final
