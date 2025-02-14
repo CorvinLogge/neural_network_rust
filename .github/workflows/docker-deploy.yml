@@ -72,7 +72,7 @@ jobs:
         run: sudo apt-get install sshpass
 
       - name: Copy docker-compose.yml
-        run: sshpass -v -p ${{ secrets.NETCUP_PASSWORD }} scp -o StrictHostKeyChecking=no compose.yml root@${{ vars.DROPLET_IP }}:/home/neural_network/docker
+        run: sshpass -v -p ${{ secrets.NETCUP_PASSWORD }} scp -o StrictHostKeyChecking=no compose.yml root@${{ secrets.NETCUP_IP }}:/home/neural_network/docker
 
       - name: Deploy
         uses: appleboy/ssh-action@master
