@@ -50,6 +50,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ github.sha }}
+          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/neural_network:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
