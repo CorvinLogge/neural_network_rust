@@ -1,12 +1,12 @@
+use crate::function::ActivationFunction;
+use crate::function::ActivationFunction::RELU;
 use derive_getters::Getters;
 use nalgebra::DMatrix;
 use rand::distributions::Distribution;
 use rocket::serde::Deserialize;
 
-use crate::function::ActivationFunction;
-use crate::function::ActivationFunction::RELU;
-
 #[derive(Clone, Debug, Getters, Deserialize)]
+#[rustfmt::skip]
 pub struct Layer {
     #[serde(skip, default = "default_matrix")] weights: DMatrix<f32>,
     #[serde(skip, default = "default_matrix")] weight_velocity: DMatrix<f32>,
@@ -43,7 +43,11 @@ impl Default for Layer {
 
 impl Layer {
     pub fn init(&mut self) {
-        self.weights = DMatrix::<f32>::from_fn(self.ins, self.outs, *self.activation.weight_initialization(self.ins));
+        self.weights = DMatrix::<f32>::from_fn(
+            self.ins,
+            self.outs,
+            *self.activation.weight_initialization(self.ins),
+        );
         self.weight_velocity = DMatrix::<f32>::zeros(self.ins, self.outs);
         self.weight_moment = DMatrix::<f32>::zeros(self.ins, self.outs);
         self.biases = DMatrix::<f32>::from_fn(self.outs, 1, *self.activation.bias_initialization());
@@ -52,7 +56,11 @@ impl Layer {
         self.outputs = DMatrix::<f32>::zeros(self.outs, 1);
     }
 
-    pub fn from(weights: DMatrix<f32>, biases: DMatrix<f32>, activation: ActivationFunction) -> Layer {
+    pub fn from(
+        weights: DMatrix<f32>,
+        biases: DMatrix<f32>,
+        activation: ActivationFunction,
+    ) -> Layer {
         Layer {
             weights: weights.clone(),
             weight_velocity: DMatrix::<f32>::zeros(weights.nrows(), weights.ncols()),

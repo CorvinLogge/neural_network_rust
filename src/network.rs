@@ -64,7 +64,7 @@ impl Network {
         beta_1: f32,
         beta_2: f32,
         t: usize,
-    ) -> Result<(), Error>{
+    ) -> Result<(), Error> {
         let (inputs, targets) = combine_batch(batch);
 
         let mut error: DMatrix<f32> = DMatrix::<f32>::zeros(0, 0);
@@ -257,7 +257,11 @@ impl Network {
         Ok(plot_points)
     }
 
-    pub fn profile(&self, tolerance: f32, testing_data: &Vec<DataPoint>) -> Result<ProfileResult, Error> {
+    pub fn profile(
+        &self,
+        tolerance: f32,
+        testing_data: &Vec<DataPoint>,
+    ) -> Result<ProfileResult, Error> {
         let mut successes = 0;
         let mut fails = 0;
 
@@ -286,7 +290,7 @@ impl Network {
         let bytes = Self::get_file_bytes(file_path)?;
         Network::try_from(bytes)
     }
-    fn get_file_bytes(file_path: &String, ) -> Result<VecDeque<u8>, Error> {
+    fn get_file_bytes(file_path: &String) -> Result<VecDeque<u8>, Error> {
         let network_path = format!("./{file_path}");
         let bytes = fs::read(&network_path).map_err(|e| {
             Error::new(
@@ -382,23 +386,19 @@ impl Network {
         &self.id
     }
 
-    pub fn layers(&self) -> &Vec<Layer>
-    {
+    pub fn layers(&self) -> &Vec<Layer> {
         &self.layers
     }
 
-    pub fn error(&self) -> ErrorFunction
-    {
+    pub fn error(&self) -> ErrorFunction {
         self.error
     }
 
-    pub fn optimizer(&self) -> Optimizer
-    {
+    pub fn optimizer(&self) -> Optimizer {
         self.optimizer
     }
 
-    pub fn data_set(&self) -> DataSet
-    {
+    pub fn data_set(&self) -> DataSet {
         self.data_set
     }
 }
@@ -493,7 +493,7 @@ fn combine_batch(batch: &[DataPoint]) -> (DMatrix<f32>, DMatrix<f32>) {
     let mut targets: DMatrix<f32> = DMatrix::<f32>::zeros(len_target, batch.len());
 
     let mut inputs = inputs;
-    let mut targets =targets;
+    let mut targets = targets;
 
     for (index, data_point) in batch.iter().enumerate() {
         let input = Vector::from_vec_storage(VecStorage::new(
@@ -543,11 +543,9 @@ impl ProfileResult {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[rustfmt::skip]
 pub enum ActivationMode {
-    #[serde(alias = "sigmoid")]
-    Sigmoid,
-    #[serde(alias = "relu")]
-    Relu,
-    #[serde(alias = "relu_sig")]
-    ReluSig,
+    #[serde(alias = "sigmoid")] Sigmoid,
+    #[serde(alias = "relu")] Relu,
+    #[serde(alias = "relu_sig")] ReluSig,
 }

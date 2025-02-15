@@ -1,39 +1,38 @@
-use std::collections::VecDeque;
-use std::fmt::Debug;
-use std::fs;
-use std::ops::Range;
-
 use crate::data_sets::DataSet::*;
 use crate::error::Error;
 use image::{ImageBuffer, Rgb};
 use num_integer::Roots;
 use rocket::form::validate::Len;
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
+use std::fmt::Debug;
+use std::fs;
+use std::ops::Range;
 
 #[derive(Clone)]
-pub(crate) struct DataPoint
-{
+pub(crate) struct DataPoint {
     input: Vec<f32>,
     target_vec: Vec<f32>,
     target: f32,
 }
 
 impl DataPoint {
-    pub fn input(&self) -> &Vec<f32>
-    {
+    pub fn input(&self) -> &Vec<f32> {
         &self.input
     }
 
-    pub fn target_vec(&self) -> &Vec<f32>
-    {
+    pub fn target_vec(&self) -> &Vec<f32> {
         &self.target_vec
     }
 
-    pub fn target(&self) -> f32 { self.target }
+    pub fn target(&self) -> f32 {
+        self.target
+    }
 }
 
-#[derive(Serialize, Deserialize, FromFormField, Debug, Copy, Clone)]
+#[derive(Serialize, Deserialize, FromFormField, Copy, Clone, Debug)]
 #[serde(crate = "rocket::serde")]
+#[rustfmt::skip]
 pub enum DataSet {
     #[serde(alias = "mnist_digits")] MnistDigits = 0,
     #[serde(alias = "emnist_digits")] EMnistDigits = 1,
@@ -65,7 +64,7 @@ impl DataSet {
 
     pub fn num_inputs(&self) -> usize {
         match self {
-            _ => 784
+            _ => 784,
         }
     }
 }
@@ -85,7 +84,11 @@ impl TryFrom<u8> for DataSet {
     }
 }
 
-fn read_emnist(inputs_path: String, targets_path: String, num_classes: usize) -> Result<Vec<DataPoint>, Error> {
+fn read_emnist(
+    inputs_path: String,
+    targets_path: String,
+    num_classes: usize,
+) -> Result<Vec<DataPoint>, Error> {
     let mut inputs_as_bytes: VecDeque<u8> = VecDeque::from(fs::read(inputs_path)?);
     let mut targets_as_bytes: VecDeque<u8> = VecDeque::from(fs::read(targets_path)?);
 
@@ -122,10 +125,11 @@ fn mirror(vec: &Vec<u8>) -> Result<Vec<u8>, Error> {
     let width_control = (vec.len() as f32).sqrt();
     let width = vec.len().sqrt();
 
-    if width as f32 != width_control { return Err(Error::default()) }
+    if width as f32 != width_control {
+        return Err(Error::default());
+    }
 
-    for index in 0..vec.len()
-    {
+    for index in 0..vec.len() {
         let x = (index as f32 / width as f32).floor();
         let y = (index as f32 % width as f32).floor();
 
@@ -159,7 +163,9 @@ pub fn generate_images(data_set: DataSet, indices: Range<usize>) -> Result<(), E
 
     let data_points = read_emnist_train(&data_path, num_classes)?;
 
-    if indices.end > data_points.len() {return Err(Error::default())}
+    if indices.end > data_points.len() {
+        return Err(Error::default());
+    }
 
     for index in indices {
         generate_image(data_points[index].clone(), index);

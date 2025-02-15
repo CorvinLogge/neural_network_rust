@@ -3,6 +3,7 @@ use crate::optimizers::Optimizer::{Adam, RmsProp, Sgd, SgdM};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
+#[rustfmt::skip]
 pub enum Optimizer {
     #[serde(alias = "sgd")] Sgd = 0,
     #[serde(alias = "sgdm")] SgdM = 1,

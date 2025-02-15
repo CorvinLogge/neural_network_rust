@@ -1,15 +1,13 @@
+use crate::debug_only;
+use crate::error::Error;
+use crate::DEBUG;
+use image::imageops::FilterType;
+use image::{ImageBuffer, Rgb};
+use regex::Regex;
 use std::cmp::max;
 use std::collections::VecDeque;
 use std::ops::Add;
 use std::ops::Deref;
-
-use image::imageops::FilterType;
-use image::{ImageBuffer, Rgb};
-use regex::Regex;
-
-use crate::debug_only;
-use crate::error::Error;
-use crate::DEBUG;
 
 macro_rules! preprocess {
     ($image:expr, $($function:ident $(($($args:expr),*))?),*) => {{
@@ -45,7 +43,9 @@ impl ImageProcessor {
         let chunks = input.split(";");
 
         for chunk in chunks {
-            if chunk.len() == 0 { continue; }
+            if chunk.len() == 0 {
+                continue;
+            }
             let num = (&chunk[0..(chunk.len() - 1)]).parse::<usize>()?;
             let val = (&chunk[(chunk.len() - 1)..]).parse::<u8>()?;
 
@@ -59,7 +59,11 @@ impl ImageProcessor {
             let x = index as f32 % width as f32;
             let y = index as f32 / width as f32;
 
-            image.put_pixel(x.floor() as u32, y.floor() as u32, Rgb([*val * 255, *val * 255, *val * 255]));
+            image.put_pixel(
+                x.floor() as u32,
+                y.floor() as u32,
+                Rgb([*val * 255, *val * 255, *val * 255]),
+            );
         }
 
         debug_only!(image.save("logs/original_image.png")?);

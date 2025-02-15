@@ -1,31 +1,38 @@
-use std::clone::Clone;
-use std::f32::consts::E;
-
-use crate::error::{Error, ErrorKind};
+use crate::error::Error;
 use nalgebra::DMatrix;
 use num_traits::Pow;
 use rand::{random, thread_rng, Rng};
-use rocket::http::Status;
 use rocket::serde::{Deserialize, Serialize};
+use std::clone::Clone;
+use std::f32::consts::E;
 
 const L_RELU: fn(f32) -> f32 = |x| if x >= 0f32 { x } else { 0.025 * x };
 const L_RELU_P: fn(f32) -> f32 = |x| if x < 0.0 { 0.025 } else { 1.0 };
 
 const RELU: fn(f32) -> f32 = |x| f32::max(0.0, x);
-const RELU_P: fn(f32) -> f32 = |x| { return if x <= 0.0 { 0.0 } else { 1.0 }; };
-const HE_INIT: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> = |ins| Box::new(move |_, _| ((random::<f32>() * 2.0) - 1.0) * f32::sqrt(2.0 / ins as f32));
+const RELU_P: fn(f32) -> f32 = |x| {
+    return if x <= 0.0 { 0.0 } else { 1.0 };
+};
+const HE_INIT: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> =
+    |ins| Box::new(move |_, _| ((random::<f32>() * 2.0) - 1.0) * f32::sqrt(2.0 / ins as f32));
 
 const RAND_0_1: fn(usize, usize) -> f32 = |_, _| random::<f32>();
-const RAND_0_1_: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> = |_| Box::new(move |_, _| random::<f32>());
-const RAND_1_1: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> = |_| Box::new(move |_, _| thread_rng().gen_range(-1..1) as f32);
+const RAND_0_1_: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> =
+    |_| Box::new(move |_, _| random::<f32>());
+const RAND_1_1: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> =
+    |_| Box::new(move |_, _| thread_rng().gen_range(-1..1) as f32);
 const ZERO: fn(usize, usize) -> f32 = |_, _| 0.0;
 
 const SIGMOID: fn(f32) -> f32 = |x| 1f32 / (1f32 + E.pow(-x));
 const SIGMOID_P: fn(f32) -> f32 = |x| SIGMOID(x) * (1f32 - SIGMOID(x));
-const XAVIER_INIT: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> = |ins| Box::new(move |_, _| thread_rng().gen_range(-(1f32 / f32::sqrt(ins as f32))..(1f32 / f32::sqrt(ins as f32))));
+const XAVIER_INIT: fn(usize) -> Box<dyn Fn(usize, usize) -> f32> = |ins| {
+    Box::new(move |_, _| {
+        thread_rng().gen_range(-(1f32 / f32::sqrt(ins as f32))..(1f32 / f32::sqrt(ins as f32)))
+    })
+};
 
 pub fn softmax(mat: &DMatrix<f32>) -> Box<dyn Fn(f32) -> f32> {
-    let sum: f32 = mat.iter().map(|v| { E.pow(v) }).sum();
+    let sum: f32 = mat.iter().map(|v| E.pow(v)).sum();
     Box::new(move |v| E.pow(v) / sum)
 }
 
@@ -36,10 +43,14 @@ pub fn equ(mat: &DMatrix<f32>) -> Box<dyn Fn(f32) -> f32> {
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub enum ErrorFunction {
-    #[serde(alias = "mse")] MSE = 0,
-    #[serde(alias = "cross_entropy")] CrossEntropy = 1,
-    #[serde(alias = "l1")] L1 = 2,
-    #[serde(alias = "l2")] L2 = 3,
+    #[serde(alias = "mse")]
+    MSE = 0,
+    #[serde(alias = "cross_entropy")]
+    CrossEntropy = 1,
+    #[serde(alias = "l1")]
+    L1 = 2,
+    #[serde(alias = "l2")]
+    L2 = 3,
 }
 
 impl TryFrom<u8> for ErrorFunction {
@@ -57,6 +68,7 @@ impl TryFrom<u8> for ErrorFunction {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[rustfmt::skip]
 pub enum ActivationFunction {
     #[serde(alias = "relu")] RELU = 0,
     #[serde(alias = "lrelu")] LRELU = 1,
@@ -105,7 +117,7 @@ impl TryFrom<u8> for ActivationFunction {
             0 => Ok(ActivationFunction::RELU),
             1 => Ok(ActivationFunction::LRELU),
             2 => Ok(ActivationFunction::SIGMOID),
-            _ => Err(Error::unknown_variant(vec![0,1,2], value)),
+            _ => Err(Error::unknown_variant(vec![0, 1, 2], value)),
         }
     }
 }

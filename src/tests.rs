@@ -4,8 +4,7 @@ mod tests {
     use rocket::serde::json::Json;
 
     #[test]
-    fn test_guess()
-    {
+    fn test_guess() {
         let expected = vec![
             8.961152e-15,
             1.5442085e-8,
@@ -27,8 +26,12 @@ mod tests {
         let res = guess(Json(req));
 
         match res {
-            Ok(json) => { assert_eq!(expected, json.0) }
-            Err(e) => { assert!(false, "{e:?}") }
+            Ok(json) => {
+                assert_eq!(expected, json.0)
+            }
+            Err(e) => {
+                assert!(false, "{e:?}")
+            }
         }
     }
 }

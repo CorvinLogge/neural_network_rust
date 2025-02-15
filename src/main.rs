@@ -1,27 +1,23 @@
-#![allow(unused)]
-
 #[macro_use]
 extern crate rocket;
 
-use rocket::fairing::{Fairing, Info, Kind};
-use serde_json::{json, Value};
-
 use crate::data_sets::{read_emnist_test, DataSet};
-use crate::layer::Layer;
-use image::{ImageBuffer, Rgb};
-use rocket::http::{Header, Status};
-use rocket::serde::json::Json;
-use rocket::{Build, Data, Request, Response, Rocket};
-use serde::{Deserialize, Serialize};
-use std::string::ToString;
-
 use crate::error::{Error, ErrorKind};
 use crate::function::ActivationFunction::SIGMOID;
 use crate::function::ErrorFunction;
 use crate::image_processor::ImageProcessor;
+use crate::layer::Layer;
 use crate::network::{ActivationMode, Network, ProfileResult};
 use crate::optimizers::Optimizer;
 use crate::plotter::file_plot;
+use image::{ImageBuffer, Rgb};
+use rocket::fairing::{Fairing, Info, Kind};
+use rocket::http::{Header, Status};
+use rocket::serde::json::Json;
+use rocket::{Build, Data, Request, Response, Rocket};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::string::ToString;
 
 mod data_sets;
 mod error;

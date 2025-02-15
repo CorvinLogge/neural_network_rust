@@ -10,7 +10,7 @@ use std::io;
 use std::io::Cursor;
 use std::num::ParseIntError;
 
-#[derive(Clone, Copy, Default, Debug, Serialize, )]
+#[derive(Clone, Copy, Default, Debug, Serialize)]
 pub enum ErrorKind {
     #[default]
     Other,
@@ -32,7 +32,12 @@ pub struct Error {
 }
 
 impl Error {
-    pub fn new(kind: ErrorKind, message: String, status: Status, cause: Option<Box<dyn std::error::Error>>) -> Error {
+    pub fn new(
+        kind: ErrorKind,
+        message: String,
+        status: Status,
+        cause: Option<Box<dyn std::error::Error>>,
+    ) -> Error {
         Error {
             kind,
             message,
@@ -85,13 +90,13 @@ impl std::error::Error for Error {
 }
 
 impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result{
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)
     }
 }
 
-impl<'r> Responder<'r, 'static, > for Error {
-    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'static>{
+impl<'r> Responder<'r, 'static> for Error {
+    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'static> {
         let mut error_trace: Vec<&dyn std::error::Error> = Vec::new();
 
         error_trace_recursive(&self, &mut error_trace);
@@ -145,7 +150,7 @@ impl From<serde_json::Error> for Error {
 }
 
 impl From<ImageError> for Error {
-    fn from(value: ImageError, ) -> Self {
+    fn from(value: ImageError) -> Self {
         Self::new(
             ErrorKind::Image,
             value.to_string(),
@@ -166,9 +171,11 @@ impl From<ParseIntError> for Error {
     }
 }
 
-pub fn error_trace_recursive<'a>(error: &'a dyn std::error::Error, errors: &mut Vec<&'a dyn std::error::Error>) {
-    if let Some(source) = error.source()
-    {
+pub fn error_trace_recursive<'a>(
+    error: &'a dyn std::error::Error,
+    errors: &mut Vec<&'a dyn std::error::Error>,
+) {
+    if let Some(source) = error.source() {
         errors.push(source);
         error_trace_recursive(source, errors);
     }
